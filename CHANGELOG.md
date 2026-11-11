@@ -18,6 +18,18 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.46.0 (2026-11-11)
+
+[both] **Viewport capture, slice C: a per-source capture policy, captures on new revisions, and a capped re-issue** (archiver#380, operator decisions D2/D3). Migration `c4a9e1f07d2b`. SDK 5.18.0. Nothing changes for a source until a policy is set: with none, Capture now sends the same default as before and no revision triggers a capture.
+
+- **`info_sources.capture_policy`** (JSONB, `NULL` = no policy): `{viewport: {width, height}, full_page, wait, on_revision}`, validated against Replicator's limits (each side `1..4096`; `wait` `null` / `networkidle` / `selector` / `delay` up to 30 s), unknown keys refused, stored with every default filled. Judged by the stored-document sweep. Expand-only.
+- **API**: `PATCH /info-sources/{id}/capture-policy` with `{capture_policy}` sets it (replaced whole) or clears it (`null`); 422 on an invalid policy, 404 for an unknown source. `InfoSourceOut` gains `capture_policy` (additive). **SDK**: `set_capture_policy(info_source_id, policy)`.
+- **Every capture sends the source's policy** (viewport, `full_page`, `wait`), or the default.
+- **Per-revision trigger** (D3, opt-in): a new revision of a source whose policy sets `on_revision` issues a capture in the revision's transaction, on both write paths (`content.revisions` and `POST /source-revisions`); never on a redelivery, never while a capture is open. A stored policy that no longer validates captures nothing and lets the revision land.
+- **`capture_commands`** gains `source_revision_id` (FK `source_revisions`, `SET NULL`; the revision that triggered it), `reissue_of` (self FK, `SET NULL`) and `attempt` (default 1, `CHECK >= 1`).
+- **Reaper re-issue** (Replicator's C2): a capture silent past 1 h is abandoned and, in the same transaction, re-sent with exactly what it sent under a fresh `command_id`, up to 2 times, for any occasion. Not while `ARCHIVER_CAPTURE_ENABLED` is off, nor once the source has a newer command. Terminal failures are not re-issued.
+- **Dashboard**: a Capture Policy card on InfoSource detail (`POST /dashboard/info-sources/{id}/capture-policy`) states and edits the policy. The Viewport Capture card says what each command sent, why (on demand, or the new revision it accompanies), and its attempt.
+
 ## v4.45.0 (2026-11-11)
 
 [service] **Viewport capture, slice B: captures are kept with `content.persist`** (archiver#380; Replicator's capture contract C3). Migration `bbeca5a6f31e`. SDK unchanged (5.17.0): no API route or schema changes. Gated by the existing `ARCHIVER_PERSIST_ISSUANCE`, which has been on in production since #283.

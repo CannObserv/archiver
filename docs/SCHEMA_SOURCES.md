@@ -35,6 +35,15 @@ and here.
     easy to lose across a wire, and no consumer has asked for it yet. Surfacing it on
     `InfoSourceResponse` is a deliberate future call carrying an SDK regen and a `CHANGELOG`
     entry; until someone needs it, the narrower surface is the cheaper one to be right about.
+  `capture_policy JSONB NULL` (archiver#380 slice C, D2) — what a viewport capture of this source
+  sends and whether each new revision triggers one: `{viewport: {width, height}, full_page, wait,
+  on_revision}`, a `src.core.capture_policy.CapturePolicy` stored with every default filled. Each
+  viewport side `1..4096`; `wait` is `null` (after `load`), `networkidle`, `selector` (non-blank
+  CSS) or `delay` (`0 < seconds <= 30`), Replicator's limits. Unknown keys refused; validated on
+  write (`PATCH /info-sources/{id}/capture-policy`, the dashboard's Capture Policy card) and by the
+  stored-document sweep. **`NULL` is "no policy"** - on-demand captures send the default
+  (1280×800, full page, after `load`) and no revision triggers one - stored as SQL `NULL`, never
+  JSON `null` (`none_as_null`). The issuance rules: [BUS.md](BUS.md), `content.capture`.
 - **`SourceRevision`** (`source_revisions`) — content-addressed snapshot. Identity is
   `(info_source_id, content_fingerprint)`; fingerprint is always `sha256:<hex>`, enforced on both
   write paths (`src/core/fingerprints.py`) because a differently-spelled fingerprint for identical

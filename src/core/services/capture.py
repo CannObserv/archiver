@@ -1,4 +1,4 @@
-"""Viewport capture: issue ``content.capture``, apply its outcomes (archiver#380 slice A).
+"""Viewport capture: issue ``content.capture``, apply its outcomes (archiver#380).
 
 Archiver records the policy and issues the command; Replicator renders the page
 in a confined headless browser, stores the PNG in its temporary store, and
@@ -6,14 +6,21 @@ answers on ``content.artifacts`` with ``capture_stored`` or ``capture_failed``.
 The normative obligations are Replicator's ``content-capture-issuer-contract.md``
 (C1-C5); the wire models are co-core's (cannobserv#571).
 
-**Slice A is on demand only.** An operator clicks "Capture now" on InfoSource
-detail and one command goes out with the fixed default profile
-(``DEFAULT_VIEWPORT``, ``DEFAULT_FULL_PAGE``, no wait). The per-source policy
-and the per-revision trigger are slice C; keeping a capture past
-``blob_expires_at`` is slice B: applying ``capture_stored`` issues a
-``content.persist`` for the image (``persist_issuance.issue_capture_persist``,
-under ``ARCHIVER_PERSIST_ISSUANCE``), and the reaper's catch-up re-issues one
-that was lost, failed or never sent.
+**Three occasions, one shape.** Every command sends the source's capture policy
+(``info_sources.capture_policy``, ``src.core.capture_policy``; slice C), or
+``capture_policy.DEFAULT_POLICY`` where it has none:
+
+- **On demand:** an operator clicks "Capture now" on InfoSource detail
+  (``request_capture``).
+- **On a new revision**, for a source whose policy opts in (``on_revision``,
+  D3; ``capture_for_revision``, called by ``record_revision``). The command
+  names the revision, but the link is temporal: it renders the live page.
+- **Re-issue:** the reaper re-sends a silent command, capped (below).
+
+Keeping a capture past ``blob_expires_at`` is slice B: applying
+``capture_stored`` issues a ``content.persist`` for the image
+(``persist_issuance.issue_capture_persist``, under ``ARCHIVER_PERSIST_ISSUANCE``),
+and the reaper's catch-up re-issues one that was lost, failed or never sent.
 
 **Off unless switched on.** ``ARCHIVER_CAPTURE_ENABLED`` is set only in
 ``deploy/archiver.service``, never in an env file. Off, nothing is enqueued and
@@ -22,7 +29,8 @@ the dashboard hides the button. Replicator created ``replicator.capture`` at
 
 **One open command per source.** A click while the source's latest command is
 ``requested`` is refused here rather than sent: each render is a whole browser
-launch, paced per host.
+launch, paced per host. A revision arriving while one is open issues nothing:
+the open command renders the live page anyway.
 
 **Outcomes** (``apply_capture_stored`` / ``apply_capture_failed``), correlated on
 ``command_id`` alone:
@@ -35,16 +43,18 @@ launch, paced per host.
   says so.
 - **``terminal`` first, then ``reason`` opaque (C2).** A non-terminal failure is
   recorded and the command stays open. ``wait_timeout`` is terminal: the remedy
-  is another condition under a fresh ``command_id``, which is a person's call in
-  slice A.
+  is another condition under a fresh ``command_id``, a person's call (edit the
+  policy, capture again). A terminal failure is never re-issued automatically.
 - **An unknown ``command_id``** raises ``UnknownCommandError``, which the
   consumer acks and drops, as for replicate and persist.
 
-**The reaper abandons and re-issues nothing** (``reap_open_captures``). Silence
-means "still trying" or "lost" (C2); past ``DEFAULT_REAP_HORIZON`` the command
-closes ``abandoned`` and the button is live again. Re-issuing is a person's in
-slice A; the capped automatic re-issue arrives with slice C's unattended
-triggers.
+**The reaper abandons, then re-issues, capped** (``reap_open_captures``).
+Silence means "still trying" or "lost" (C2); past ``DEFAULT_REAP_HORIZON`` the
+command closes ``abandoned`` and a fresh one goes out under a new
+``command_id`` with exactly what the silent one sent (``reissue_of``,
+``attempt + 1``), up to ``MAX_CAPTURE_REISSUES`` times. Every occasion is
+re-issued, a click's included: the person who asked for a capture still wants
+one. Not re-issued: with the switch off, or once the source has a newer command.
 
 **Never capped.** ``content.capture`` is a command stream: it stays out of the
 publisher's ``trim_topics`` (CannObserv/broker STREAMS.md: "never XTRIMmed").
@@ -59,6 +69,7 @@ import logging
 import os
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from typing import Any, NamedTuple
 
 from co_core.pure.adapters.bus.streams import CONTENT_CAPTURE
 from co_core.pure.models.changes import (
@@ -67,12 +78,14 @@ from co_core.pure.models.changes import (
     CaptureViewportEmit,
     ContentCaptureCommandEmit,
 )
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
+from src.core.capture_policy import CapturePolicy, effective_policy
 from src.core.logging import get_logger
-from src.core.models import CaptureCommand, ChangesOutboxRow, InfoSource
+from src.core.models import CaptureCommand, ChangesOutboxRow, InfoSource, SourceRevision
 from src.core.services.persist_issuance import issue_capture_persist
 from src.core.services.replication_writeback import UnknownCommandError
 
@@ -84,11 +97,6 @@ ENABLED_ENV = "ARCHIVER_CAPTURE_ENABLED"
 """Set only in ``deploy/archiver.service``; never in an env file."""
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
-
-# The one profile slice A sends. A common desktop viewport, the whole page:
-# Replicator refuses (``too_large``) rather than clips past 4096 x 32768 px.
-DEFAULT_VIEWPORT = (1280, 800)
-DEFAULT_FULL_PAGE = True
 
 # A render is bounded by Replicator's 120 s fetch deadline and paced per host;
 # a 5xx on the navigation is retried with no fact. An hour is many retries.
@@ -102,6 +110,10 @@ STATE_ABANDONED = "abandoned"
 # The reaper's local reason, persist's and replication's token for the same thing.
 REASON_NO_FACT = "no_fact_before_horizon"
 
+MAX_CAPTURE_REISSUES = 2
+"""Re-issues of one silent capture: ``1 + MAX_CAPTURE_REISSUES`` commands, each
+given the full horizon, before the reaper leaves it ``abandoned``."""
+
 
 class CaptureDisabled(RuntimeError):
     """``ARCHIVER_CAPTURE_ENABLED`` is off: nothing may be enqueued."""
@@ -109,6 +121,17 @@ class CaptureDisabled(RuntimeError):
 
 class CaptureAlreadyOpen(RuntimeError):
     """The source's latest command is still ``requested``."""
+
+
+class CapturePolicyInvalid(ValueError):
+    """The source's stored policy no longer validates: fix it before capturing."""
+
+
+class ReapResult(NamedTuple):
+    """One reaper pass: commands abandoned, and how many of those were re-issued."""
+
+    abandoned: int
+    reissued: int
 
 
 def capture_enabled(environ: Mapping[str, str] = os.environ) -> bool:
@@ -144,46 +167,194 @@ async def request_capture(
     """
     if not capture_enabled(environ):
         raise CaptureDisabled(f"{ENABLED_ENV} is not set")
-    source = (
-        await session.execute(
-            select(InfoSource).where(InfoSource.info_source_id == info_source_id).with_for_update()
-        )
-    ).scalar_one_or_none()
+    source = await _lock_source(session, info_source_id)
     if source is None:
         raise LookupError(f"no InfoSource {info_source_id}")
+    try:
+        policy = effective_policy(source.capture_policy)
+    except ValidationError as e:
+        raise CapturePolicyInvalid(f"InfoSource {info_source_id}'s capture policy: {e}") from e
     latest = await latest_capture(session, info_source_id)
     if latest is not None and latest.state == STATE_REQUESTED:
         raise CaptureAlreadyOpen(f"capture {latest.command_id} is still open")
+    return _issue(
+        session,
+        source,
+        viewport=policy.viewport_emit(),
+        full_page=policy.full_page,
+        wait=policy.wait_emit(),
+        requested_by=requested_by,
+    )
 
+
+async def set_capture_policy(
+    session: AsyncSession, info_source_id: ULID, policy: CapturePolicy | None
+) -> InfoSource:
+    """Store ``policy`` on the source, every default filled; ``None`` clears it. Caller commits.
+
+    Raises :class:`LookupError` for an unknown source. Writes no command: a
+    policy takes effect at the next click or revision.
+    """
+    source = await session.get(InfoSource, info_source_id)
+    if source is None:
+        raise LookupError(f"no InfoSource {info_source_id}")
+    source.capture_policy = None if policy is None else policy.model_dump(mode="json")
+    logger.info(
+        "Capture policy set" if policy is not None else "Capture policy cleared",
+        extra={
+            "info_source_id": str(info_source_id),
+            "on_revision": policy.on_revision if policy is not None else None,
+        },
+    )
+    return source
+
+
+async def capture_for_revision(
+    session: AsyncSession,
+    revision: SourceRevision,
+    *,
+    environ: Mapping[str, str] = os.environ,
+) -> CaptureCommand | None:
+    """Capture a new revision's source if its policy opts in (D3). Caller commits.
+
+    ``None``, writing nothing, when the switch is off, the source has no policy
+    or does not opt in, its stored policy no longer validates (logged: the
+    revision must still land), or a command is already open. Called by
+    ``record_revision`` for a genuinely new revision only, never a redelivery.
+    """
+    if not capture_enabled(environ):
+        return None
+    source = await session.get(InfoSource, revision.info_source_id)
+    if source is None or source.capture_policy is None:
+        return None
+    policy = _policy_or_none(source)
+    if policy is None or not policy.on_revision:
+        return None
+    # Contained (CR 2): a capture defect must not cost the revision, whose
+    # transaction this is - on the bus that would redeliver or dead-letter it.
+    try:
+        async with session.begin_nested():
+            command = await _capture_revision(session, source, revision, policy)
+            await session.flush()
+    except Exception:  # noqa: BLE001 - any defect is logged; the revision lands
+        logger.exception(
+            "Revision capture failed; the revision is recorded without one",
+            extra={
+                "info_source_id": str(source.info_source_id),
+                "source_revision_id": str(revision.source_revision_id),
+            },
+        )
+        return None
+    return command
+
+
+async def _capture_revision(
+    session: AsyncSession, source: InfoSource, revision: SourceRevision, policy: CapturePolicy
+) -> CaptureCommand | None:
+    """``capture_for_revision``'s write, under the source lock; ``None`` while one is open."""
+    await _lock_source(session, source.info_source_id)
+    latest = await latest_capture(session, source.info_source_id)
+    if latest is not None and latest.state == STATE_REQUESTED:
+        logger.info(
+            "New revision while a capture is open; not issuing another",
+            extra={
+                "info_source_id": str(source.info_source_id),
+                "source_revision_id": str(revision.source_revision_id),
+                "open_command_id": latest.command_id,
+            },
+        )
+        return None
+    return _issue(
+        session,
+        source,
+        viewport=policy.viewport_emit(),
+        full_page=policy.full_page,
+        wait=policy.wait_emit(),
+        requested_by=None,
+        source_revision_id=revision.source_revision_id,
+    )
+
+
+def _policy_or_none(source: InfoSource) -> CapturePolicy | None:
+    """The stored policy, or ``None`` (logged) when it no longer validates."""
+    try:
+        return effective_policy(source.capture_policy)
+    except ValidationError as e:
+        logger.warning(
+            "Stored capture policy no longer validates; no revision capture",
+            extra={"info_source_id": str(source.info_source_id), "error": str(e)},
+        )
+        return None
+
+
+async def _lock_source(session: AsyncSession, info_source_id: ULID) -> InfoSource | None:
+    """The source, row-locked, so two issuers cannot both pass the one-open check.
+
+    ``FOR NO KEY UPDATE`` (``key_share=True``), not ``FOR UPDATE``: it still
+    conflicts with itself, but not with the ``FOR KEY SHARE`` a revision insert's
+    foreign key takes. ``record_revision`` inserts first and locks second, so
+    ``FOR UPDATE`` could deadlock two writers for one source.
+    """
+    return (
+        await session.execute(
+            select(InfoSource)
+            .where(InfoSource.info_source_id == info_source_id)
+            .with_for_update(key_share=True)
+        )
+    ).scalar_one_or_none()
+
+
+def _issue(
+    session: AsyncSession,
+    source: InfoSource,
+    *,
+    viewport: CaptureViewportEmit,
+    full_page: bool,
+    wait: Any,
+    requested_by: ULID | None,
+    source_revision_id: ULID | None = None,
+    reissue_of: str | None = None,
+    attempt: int = 1,
+) -> CaptureCommand:
+    """Add the command row and its outbox row; the row records what the wire carries."""
     now = datetime.now(UTC)
     command_id = str(ULID())
-    width, height = DEFAULT_VIEWPORT
     emit = ContentCaptureCommandEmit(
         occurred_at=now,
         command_id=command_id,
         url=source.url,
-        info_source_id=str(info_source_id),
-        viewport=CaptureViewportEmit(width=width, height=height),
-        full_page=DEFAULT_FULL_PAGE,
-        wait=None,
+        info_source_id=str(source.info_source_id),
+        viewport=viewport,
+        full_page=full_page,
+        wait=wait,
     )
+    payload = emit.model_dump(mode="json")
     command = CaptureCommand(
         command_id=command_id,
-        info_source_id=info_source_id,
+        info_source_id=source.info_source_id,
         url=source.url,
-        viewport_width=width,
-        viewport_height=height,
-        full_page=DEFAULT_FULL_PAGE,
-        wait=None,
+        viewport_width=emit.viewport.width,
+        viewport_height=emit.viewport.height,
+        full_page=emit.full_page,
+        wait=payload["wait"],
         requested_by=requested_by,
+        source_revision_id=source_revision_id,
+        reissue_of=reissue_of,
+        attempt=attempt,
         issued_at=now,
         state=STATE_REQUESTED,
     )
     session.add(command)
-    session.add(ChangesOutboxRow(topic=CAPTURE_TOPIC, payload=emit.model_dump(mode="json")))
+    session.add(ChangesOutboxRow(topic=CAPTURE_TOPIC, payload=payload))
     logger.info(
         "Capture requested",
-        extra={"command_id": command_id, "info_source_id": str(info_source_id)},
+        extra={
+            "command_id": command_id,
+            "info_source_id": str(source.info_source_id),
+            "source_revision_id": str(source_revision_id) if source_revision_id else None,
+            "reissue_of": reissue_of,
+            "attempt": attempt,
+        },
     )
     return command
 
@@ -298,11 +469,14 @@ async def apply_capture_failed(session: AsyncSession, fact: CaptureFailedEvent) 
 
 
 async def reap_open_captures(
-    session: AsyncSession, *, horizon: timedelta = DEFAULT_REAP_HORIZON
-) -> int:
-    """Abandon commands open past ``horizon``. Returns how many. Re-issues nothing.
+    session: AsyncSession,
+    *,
+    horizon: timedelta = DEFAULT_REAP_HORIZON,
+    environ: Mapping[str, str] = os.environ,
+) -> ReapResult:
+    """Abandon commands open past ``horizon``, re-issuing each within the cap.
 
-    Does not commit.
+    The abandon and its re-issue share the caller's transaction. Does not commit.
     """
     cutoff = datetime.now(UTC) - horizon
     stale = list(
@@ -315,12 +489,18 @@ async def reap_open_captures(
                     CaptureCommand.issued_at <= cutoff,
                 )
                 .order_by(CaptureCommand.issued_at, CaptureCommand.command_id)
+                # A row the consumer is writing is skipped this tick and judged
+                # on its committed state next tick; a plain read would wait,
+                # then overwrite a fresh ``stored`` with ``abandoned`` and
+                # re-issue it (CR 1).
+                .with_for_update(skip_locked=True)
             )
         )
         .scalars()
         .all()
     )
     now = datetime.now(UTC)
+    reissued = 0
     for command in stale:
         command.state = STATE_ABANDONED
         command.reason = REASON_NO_FACT
@@ -332,10 +512,62 @@ async def reap_open_captures(
                 "info_source_id": str(command.info_source_id),
                 "issued_at": command.issued_at.isoformat(),
                 "horizon_hours": horizon.total_seconds() / 3600,
+                "attempt": command.attempt,
             },
         )
+        await session.flush()
+        if await _contained_reissue(session, command, environ) is not None:
+            reissued += 1
     await session.flush()
-    return len(stale)
+    return ReapResult(abandoned=len(stale), reissued=reissued)
+
+
+async def _contained_reissue(
+    session: AsyncSession, command: CaptureCommand, environ: Mapping[str, str]
+) -> CaptureCommand | None:
+    """``_reissue`` in a savepoint: a defect is logged and the abandon stands (CR 2)."""
+    try:
+        async with session.begin_nested():
+            reissued = await _reissue(session, command, environ)
+            await session.flush()
+    except Exception:  # noqa: BLE001 - any defect is logged; the abandon stands
+        logger.exception(
+            "Capture re-issue failed; the command stays abandoned",
+            extra={"command_id": command.command_id},
+        )
+        return None
+    return reissued
+
+
+async def _reissue(
+    session: AsyncSession, command: CaptureCommand, environ: Mapping[str, str]
+) -> CaptureCommand | None:
+    """Re-send exactly what ``command`` sent, under a fresh id; ``None`` if not owed one."""
+    if not capture_enabled(environ):
+        return None
+    if command.attempt > MAX_CAPTURE_REISSUES:
+        logger.info(
+            "Capture re-issue cap reached; leaving it abandoned",
+            extra={"command_id": command.command_id, "attempt": command.attempt},
+        )
+        return None
+    source = await _lock_source(session, command.info_source_id)
+    if source is None:
+        return None
+    latest = await latest_capture(session, command.info_source_id)
+    if latest is None or latest.command_id != command.command_id:
+        return None
+    return _issue(
+        session,
+        source,
+        viewport=CaptureViewportEmit(width=command.viewport_width, height=command.viewport_height),
+        full_page=command.full_page,
+        wait=command.wait,
+        requested_by=command.requested_by,
+        source_revision_id=command.source_revision_id,
+        reissue_of=command.command_id,
+        attempt=command.attempt + 1,
+    )
 
 
 async def _load(session: AsyncSession, command_id: str) -> CaptureCommand:

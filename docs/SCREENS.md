@@ -199,7 +199,8 @@ assignment sections, whose `poll` drives the self-refresh (#212), the
 InfoItem Fields block, whose `rows` an omission turns into "nothing required"
 (#307), the picker (`entries`, #308), the Organization row (`org_row`,
 `power_map_configured`, #306) and InfoSource detail's Viewport Capture card
-(`capture`, `capture_enabled`, `capture_poll_seconds`, #380) - takes its
+(`capture`, `capture_enabled`, `capture_poll_seconds`, #380) and its Capture Policy
+card (`policy`, `policy_form`, `capture_enabled`, #380 slice C) - takes its
 whole context from one builder, and every render site spreads it: the swaps, the
 poll, and the full page that includes it. Jinja's default `Undefined` is falsy
 and renders empty, so a site that forgets a key does not fail - it renders a
@@ -230,6 +231,12 @@ assistive tech. The **canonical stored value rides in a
 double-quoted one (the `sortableChips` convention, #100). That is what Cancel
 resets the textarea from, with no server call. And **no `x-cloak`** - both halves
 render without JS, per the FOUC trade above.
+
+Those three are for a single-textarea editor. InfoSource's **Capture Policy** card
+(#380) edits several fields, so each field carries its own visible `<label>`, and its
+editor is a native `<details>` (open while the error shows) rather than an Alpine
+toggle: no component, no data island, nothing for Cancel to reset. The swap, the
+200 refusal with the input echoed and the no-JS 303/422 are the same.
 
 Gate the focus-move script on `swapped` (see **HTMX mutations**) and pass
 `swapped=False` on that non-HTMX path. The card partial and the section's other

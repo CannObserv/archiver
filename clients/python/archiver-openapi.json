@@ -1,6 +1,105 @@
 {
   "components": {
     "schemas": {
+      "CapturePolicy": {
+        "additionalProperties": false,
+        "description": "A source's capture settings, and whether each new revision triggers one.",
+        "properties": {
+          "full_page": {
+            "default": true,
+            "title": "Full Page",
+            "type": "boolean"
+          },
+          "on_revision": {
+            "default": false,
+            "title": "On Revision",
+            "type": "boolean"
+          },
+          "viewport": {
+            "$ref": "#/components/schemas/CaptureViewportPolicy"
+          },
+          "wait": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaptureWaitPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "CapturePolicy",
+        "type": "object"
+      },
+      "CaptureViewportPolicy": {
+        "additionalProperties": false,
+        "description": "The browser viewport, in CSS pixels.",
+        "properties": {
+          "height": {
+            "default": 800,
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "width": {
+            "default": 1280,
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "title": "CaptureViewportPolicy",
+        "type": "object"
+      },
+      "CaptureWaitPolicy": {
+        "additionalProperties": false,
+        "description": "What the page must reach, after ``load``, before it is captured.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "networkidle",
+              "selector",
+              "delay"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          },
+          "selector": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selector"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "CaptureWaitPolicy",
+        "type": "object"
+      },
       "ChunkPreviewOut": {
         "description": "One chunk in the preview response.",
         "properties": {
@@ -1471,6 +1570,28 @@
         "title": "InfoItemWatchSpecPut",
         "type": "object"
       },
+      "InfoSourceCapturePolicyPatch": {
+        "additionalProperties": false,
+        "description": "Request body for PATCH /info-sources/{id}/capture-policy.",
+        "properties": {
+          "capture_policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CapturePolicy"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The replacement policy, replaced whole; omitted keys take their defaults. null clears it. Each viewport side 1..4096; a delay wait at most 30 s."
+          }
+        },
+        "required": [
+          "capture_policy"
+        ],
+        "title": "InfoSourceCapturePolicyPatch",
+        "type": "object"
+      },
       "InfoSourceCreate": {
         "additionalProperties": false,
         "description": "Request body for POST /info-sources.",
@@ -1500,6 +1621,19 @@
       "InfoSourceOut": {
         "description": "Projection of an info_sources row.",
         "properties": {
+          "capture_policy": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What a viewport capture of this source sends (viewport, full_page, wait) and whether each new revision triggers one (on_revision). null = no policy: an on-demand capture uses 1280x800, full page, no wait, and no revision triggers one (archiver#380). As stored: a CapturePolicy with every default filled.",
+            "title": "Capture Policy"
+          },
           "created_at": {
             "description": "UTC timestamp when the InfoSource was created.",
             "format": "date-time",
@@ -3259,7 +3393,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.45.0"
+    "version": "4.46.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -6638,6 +6772,124 @@
           }
         ],
         "summary": "Get Info Source",
+        "tags": [
+          "info-sources"
+        ]
+      }
+    },
+    "/api/v1/info-sources/{info_source_id}/capture-policy": {
+      "patch": {
+        "description": "Set or clear the InfoSource's viewport-capture policy (archiver#380).\n\nReplaced whole: omitted keys take their defaults, so the response shows the\nstored document. ``on_revision: true`` captures each new revision; ``null``\nclears the policy. Takes effect at the next capture; sends nothing itself.",
+        "operationId": "patch_info_source_capture_policy_api_v1_info_sources__info_source_id__capture_policy_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_source_id",
+            "required": true,
+            "schema": {
+              "title": "Info Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoSourceCapturePolicyPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoSourceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Patch Info Source Capture Policy",
         "tags": [
           "info-sources"
         ]

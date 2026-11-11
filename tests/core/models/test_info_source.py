@@ -1,6 +1,7 @@
 """InfoSource model tests."""
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from src.core.models import InfoSource
@@ -53,3 +54,43 @@ async def test_url_required(session):
     session.add(bad)
     with pytest.raises(IntegrityError):
         await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_capture_policy_defaults_to_none_and_round_trips(session):
+    """``NULL`` is "no policy": defaults on demand, no revision captures (#380 C)."""
+    src = InfoSource(url="https://example.com/p", source_specs=[_spec()])
+    session.add(src)
+    await session.flush()
+    assert src.capture_policy is None
+
+    policy = {
+        "viewport": {"width": 390, "height": 844},
+        "full_page": False,
+        "wait": {"kind": "delay", "selector": None, "seconds": 2.5},
+        "on_revision": True,
+    }
+    src.capture_policy = policy
+    source_id = src.info_source_id
+    await session.commit()
+    session.expire_all()
+    got = await session.get(InfoSource, source_id)
+    assert got.capture_policy == policy
+
+
+@pytest.mark.asyncio
+async def test_clearing_capture_policy_stores_sql_null(session):
+    """``= None`` must be SQL NULL, not JSON ``null`` - "no policy" is a NULL test."""
+    src = InfoSource(
+        url="https://example.com/p", source_specs=[_spec()], capture_policy={"on_revision": True}
+    )
+    session.add(src)
+    await session.flush()
+    src.capture_policy = None
+    await session.flush()
+    is_null = await session.scalar(
+        select(InfoSource.capture_policy.is_(None)).where(
+            InfoSource.info_source_id == src.info_source_id
+        )
+    )
+    assert is_null is True

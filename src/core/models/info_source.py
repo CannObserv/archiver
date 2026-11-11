@@ -38,6 +38,14 @@ class InfoSource(Base):
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
     )
+    # none_as_null: clearing the policy (``= None``) must store SQL NULL, not
+    # JSON ``null``, or the sweep and the trigger would read a document.
+    capture_policy: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+    """What a viewport capture of this source sends, and whether each new
+    revision triggers one (archiver#380 slice C, D2/D3). A
+    ``src.core.capture_policy.CapturePolicy`` document, validated on write;
+    ``NULL`` = no policy: on-demand captures use the default profile and no
+    revision triggers one."""
     last_observed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

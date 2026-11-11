@@ -8,7 +8,10 @@ from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 from dateutil.parser import isoparse
 
+from ..types import UNSET, Unset
+
 if TYPE_CHECKING:
+    from ..models.info_source_out_capture_policy_type_0 import InfoSourceOutCapturePolicyType0
     from ..models.info_source_out_source_specs_item import InfoSourceOutSourceSpecsItem
 
 
@@ -25,6 +28,10 @@ class InfoSourceOut:
         info_source_id (str): ULID identifying this InfoSource.
         source_specs (list[InfoSourceOutSourceSpecsItem]): Ordered list of extraction specs.
         url (str): URL to fetch.
+        capture_policy (InfoSourceOutCapturePolicyType0 | None | Unset): What a viewport capture of this source sends
+            (viewport, full_page, wait) and whether each new revision triggers one (on_revision). null = no policy: an on-
+            demand capture uses 1280x800, full page, no wait, and no revision triggers one (archiver#380). As stored: a
+            CapturePolicy with every default filled.
     """
 
     created_at: datetime.datetime
@@ -32,9 +39,12 @@ class InfoSourceOut:
     info_source_id: str
     source_specs: list[InfoSourceOutSourceSpecsItem]
     url: str
+    capture_policy: InfoSourceOutCapturePolicyType0 | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.info_source_out_capture_policy_type_0 import InfoSourceOutCapturePolicyType0
+
         created_at = self.created_at.isoformat()
 
         domain_name: None | str
@@ -49,6 +59,14 @@ class InfoSourceOut:
 
         url = self.url
 
+        capture_policy: dict[str, Any] | None | Unset
+        if isinstance(self.capture_policy, Unset):
+            capture_policy = UNSET
+        elif isinstance(self.capture_policy, InfoSourceOutCapturePolicyType0):
+            capture_policy = self.capture_policy.to_dict()
+        else:
+            capture_policy = self.capture_policy
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -60,11 +78,14 @@ class InfoSourceOut:
                 "url": url,
             }
         )
+        if capture_policy is not UNSET:
+            field_dict["capture_policy"] = capture_policy
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.info_source_out_capture_policy_type_0 import InfoSourceOutCapturePolicyType0
         from ..models.info_source_out_source_specs_item import InfoSourceOutSourceSpecsItem
 
         d = dict(src_dict)
@@ -88,12 +109,30 @@ class InfoSourceOut:
 
         url = d.pop("url")
 
+        def _parse_capture_policy(data: object) -> InfoSourceOutCapturePolicyType0 | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                capture_policy_type_0 = InfoSourceOutCapturePolicyType0.from_dict(data)
+
+                return capture_policy_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(InfoSourceOutCapturePolicyType0 | None | Unset, data)
+
+        capture_policy = _parse_capture_policy(d.pop("capture_policy", UNSET))
+
         info_source_out = cls(
             created_at=created_at,
             domain_name=domain_name,
             info_source_id=info_source_id,
             source_specs=source_specs,
             url=url,
+            capture_policy=capture_policy,
         )
 
         info_source_out.additional_properties = d

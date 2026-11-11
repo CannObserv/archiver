@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     func,
@@ -65,6 +66,26 @@ class CaptureCommand(Base):
     )
     """The operator who clicked. An id, not an email: readable by the production
     read role (archiver#348) without a column allowlist."""
+    source_revision_id: Mapped[ULID | None] = mapped_column(
+        ULIDType(),
+        ForeignKey("information.source_revisions.source_revision_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    """The new revision that triggered this capture (slice C), ``None`` on demand.
+
+    **Temporal, not derived:** a capture renders the live page, not the
+    revision's bytes, so it shows the page *around* that revision. SET NULL: the
+    capture outlives the revision it accompanied."""
+    reissue_of: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("information.capture_commands.command_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    """The silent command this one re-issues (the reaper's capped re-issue, C2)."""
+    attempt: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=1, server_default=text("1")
+    )
+    """1 for a first command; a re-issue is its predecessor's ``attempt + 1``."""
     issued_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -108,6 +129,7 @@ class CaptureCommand(Base):
             "state IN ('requested', 'stored', 'failed', 'abandoned')",
             name="ck_capture_commands_state",
         ),
+        CheckConstraint("attempt >= 1", name="ck_capture_commands_attempt"),
         # The reaper's scan.
         Index(
             "ix_capture_commands_open",
@@ -118,5 +140,7 @@ class CaptureCommand(Base):
         Index("ix_capture_commands_source_issued", "info_source_id", "issued_at"),
         # A persist success stamps every capture carrying its digest (slice B).
         Index("ix_capture_commands_fingerprint", "content_fingerprint"),
+        # SET NULL on a revision delete scans by this column.
+        Index("ix_capture_commands_revision", "source_revision_id"),
         {"schema": "information"},
     )

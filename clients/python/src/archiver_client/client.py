@@ -107,6 +107,9 @@ from archiver_client.generated.api.info_sources import (
     list_info_sources_api_v1_info_sources_get as _list_info_sources,
 )
 from archiver_client.generated.api.info_sources import (
+    patch_info_source_capture_policy_api_v1_info_sources_info_source_id_capture_policy_patch as _patch_capture_policy,
+)
+from archiver_client.generated.api.info_sources import (
     patch_info_source_specs_api_v1_info_sources_info_source_id_source_specs_patch as _patch_info_source_specs,
 )
 from archiver_client.generated.api.notification_subscriptions import (
@@ -143,6 +146,7 @@ from archiver_client.generated.api.source_revisions import (
     patch_source_revision_api_v1_source_revisions_source_revision_id_patch as _patch_source_revision,
 )
 from archiver_client.generated.client import AuthenticatedClient
+from archiver_client.generated.models.capture_policy import CapturePolicy
 from archiver_client.generated.models.domain_out import DomainOut
 from archiver_client.generated.models.domain_patch import DomainPatch
 from archiver_client.generated.models.domain_patch_default_watch_spec_type_0 import (
@@ -173,6 +177,9 @@ from archiver_client.generated.models.info_item_tags_put import InfoItemTagsPut
 from archiver_client.generated.models.info_item_watch_spec_put import InfoItemWatchSpecPut
 from archiver_client.generated.models.info_item_watch_spec_put_document import (
     InfoItemWatchSpecPutDocument,
+)
+from archiver_client.generated.models.info_source_capture_policy_patch import (
+    InfoSourceCapturePolicyPatch,
 )
 from archiver_client.generated.models.info_source_create import InfoSourceCreate
 from archiver_client.generated.models.info_source_create_source_specs_item import (
@@ -726,6 +733,25 @@ class ArchiverClient:
             source_specs=[InfoSourcePatchSourceSpecsItem.from_dict(s) for s in source_specs],
         )
         response = await _patch_info_source_specs.asyncio_detailed(
+            client=self._gen_client, info_source_id=info_source_id, body=body
+        )
+        return _unwrap(response)
+
+    async def set_capture_policy(
+        self, info_source_id: str, policy: dict[str, Any] | None
+    ) -> InfoSourceOut:
+        """Set or clear an InfoSource's viewport-capture policy (archiver#380).
+
+        ``policy`` is replaced whole: ``viewport`` (``width``/``height``),
+        ``full_page``, ``wait`` (``networkidle``, ``selector`` or ``delay``) and
+        ``on_revision`` (capture each new revision); omitted keys take their
+        defaults, which the returned ``capture_policy`` shows. ``None`` clears it.
+        Raises ``NotFound`` or ``ValidationError`` (422, nothing stored).
+        """
+        body = InfoSourceCapturePolicyPatch(
+            capture_policy=None if policy is None else CapturePolicy.from_dict(policy)
+        )
+        response = await _patch_capture_policy.asyncio_detailed(
             client=self._gen_client, info_source_id=info_source_id, body=body
         )
         return _unwrap(response)

@@ -1,0 +1,106 @@
+{#
+  Capture Policy card (archiver#380 slice C) - InfoSource detail, beside the
+  Viewport Capture card, on the ARCHIVER_CAPTURE_ENABLED switch. Also the
+  response of its own POST.
+
+  Requires `src`, `capture_enabled`, `policy`, `policy_form` and `policy_error`,
+  all from `_capture_policy_context`, the card's one builder. `policy` states
+  the effective policy (src/dashboard/capture_view.py `policy_view`);
+  `policy_form` prefills the editor from the stored policy, or echoes a refused
+  submission. `swapped` is the caller's: true only for the POST's swap.
+
+  Its own card, not part of #capture-card: that card swaps itself every few
+  seconds while a capture is pending, which would wipe an edit in progress.
+
+  An editor card (docs/SCREENS.md): `hx-post` swaps the card in place; a
+  refusal comes back at 200 with `policy_error` (role="alert") and the input
+  echoed, the editor open. The editor is a native <details>, so it works with
+  JS off: the form keeps method/action, a POST -> 303, a refusal a full-page 422.
+  "Clear policy" submits action=clear; it shows only while a policy is stored.
+#}
+{% if capture_enabled %}
+<div class="entity-card" id="capture-policy-card" style="margin-top:var(--space-3);">
+  <div class="entity-card__header">
+    <h2 id="capture-policy-heading" tabindex="-1">Capture Policy</h2>
+  </div>
+
+  {% if policy.invalid %}
+  <p class="alert alert--error" style="margin:0 0 var(--space-2);">The stored policy no longer validates. Capture now is refused and new revisions are not captured until it is saved again.</p>
+  {% else %}
+  <p style="margin:0;">{% if policy.set %}Capture now{% if policy.on_revision %} and each new revision{% endif %} send{% if not policy.on_revision %}s{% endif %}{% else %}No policy: Capture now sends the default{% endif %} <strong>{{ policy.profile }}</strong>.</p>
+  <p class="text-sm text-muted" style="margin:var(--space-1) 0 0;">
+    {% if policy.on_revision %}Each new revision is captured.{% else %}New revisions are not captured - on demand only.{% endif %}
+  </p>
+  {% endif %}
+
+  <details{% if policy_error %} open{% endif %} style="margin-top:var(--space-2);">
+    <summary>Edit policy</summary>
+    <form method="post" action="/dashboard/info-sources/{{ src.info_source_id }}/capture-policy"
+          hx-post="/dashboard/info-sources/{{ src.info_source_id }}/capture-policy"
+          hx-target="#capture-policy-card" hx-swap="outerHTML"
+          style="margin-top:var(--space-2);">
+      <div style="display:flex;flex-wrap:wrap;gap:var(--space-3);">
+        <div>
+          <label for="capture-policy-width" class="form-label">Viewport width (px)</label>
+          <input id="capture-policy-width" type="text" name="width" value="{{ policy_form.width }}"
+                 class="form-input" inputmode="numeric" required autocomplete="off" style="width:8rem;">
+        </div>
+        <div>
+          <label for="capture-policy-height" class="form-label">Viewport height (px)</label>
+          <input id="capture-policy-height" type="text" name="height" value="{{ policy_form.height }}"
+                 class="form-input" inputmode="numeric" required autocomplete="off" style="width:8rem;">
+        </div>
+        <div>
+          <label for="capture-policy-wait" class="form-label">Capture</label>
+          <select id="capture-policy-wait" name="wait_kind" class="form-select">
+            <option value=""{% if policy_form.wait_kind == "" %} selected{% endif %}>after load</option>
+            <option value="networkidle"{% if policy_form.wait_kind == "networkidle" %} selected{% endif %}>once the network is idle</option>
+            <option value="selector"{% if policy_form.wait_kind == "selector" %} selected{% endif %}>once a selector is visible</option>
+            <option value="delay"{% if policy_form.wait_kind == "delay" %} selected{% endif %}>some seconds after load</option>
+          </select>
+        </div>
+        <div>
+          <label for="capture-policy-selector" class="form-label">Selector (CSS)</label>
+          <input id="capture-policy-selector" type="text" name="wait_selector" value="{{ policy_form.wait_selector }}"
+                 class="form-input" autocomplete="off">
+        </div>
+        <div>
+          <label for="capture-policy-seconds" class="form-label">Seconds (at most 30)</label>
+          <input id="capture-policy-seconds" type="text" name="wait_seconds" value="{{ policy_form.wait_seconds }}"
+                 class="form-input" inputmode="decimal" autocomplete="off" style="width:8rem;">
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:var(--space-3);margin-top:var(--space-2);">
+        <label class="form-label" style="display:flex;flex-direction:row;align-items:center;gap:var(--space-2);cursor:pointer;">
+          <input type="checkbox" name="full_page" value="on"{% if policy_form.full_page %} checked{% endif %}>
+          Full page, not just the viewport
+        </label>
+        <label class="form-label" style="display:flex;flex-direction:row;align-items:center;gap:var(--space-2);cursor:pointer;">
+          <input type="checkbox" name="on_revision" value="on"{% if policy_form.on_revision %} checked{% endif %}>
+          Capture each new revision
+        </label>
+      </div>
+      {% if policy_error %}
+      <p class="alert alert--error" role="alert">{{ policy_error }}</p>
+      {% endif %}
+      <div style="display:flex;gap:var(--space-2);margin-top:var(--space-2);">
+        <button type="submit" name="action" value="save" class="btn btn--sm btn--primary">Save</button>
+        {% if policy.set %}
+        <button type="submit" name="action" value="clear" class="btn btn--sm btn--secondary">Clear policy</button>
+        {% endif %}
+      </div>
+    </form>
+  </details>
+
+  {% if swapped %}
+  {# After the POST's swap move focus to the heading (archiver#78 pattern).
+     Rendered only for the swap response - never on page load. #}
+  <script>
+    (function () {
+      var h = document.getElementById("capture-policy-heading");
+      if (h) { h.focus(); }
+    }());
+  </script>
+  {% endif %}
+</div>
+{% endif %}

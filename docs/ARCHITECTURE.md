@@ -33,7 +33,7 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                state: states, health rule, next-due, drift, archiver#151;
                                temporal_profile_form.py — the profile row, #365;
                                watch_check_view.py — the check-now block, #370;
-                               capture_view.py — the Viewport Capture card, #380;
+                               capture_view.py — the capture + policy cards, #380;
                                replication_actions.py — the manual-replication outcome→flash
                                translation shared by both screens that offer the action, and
                                the one place that records why a refusal is a 200 rather than
@@ -209,8 +209,8 @@ src/core/                      Domain logic
                                and derives the state ladder at read time.
                                capture.py is viewport capture (#380): outboxes
                                content.capture while ARCHIVER_CAPTURE_ENABLED
-                               is set (unit-only), applies capture_stored /
-                               capture_failed, and abandons silent commands.
+                               is set (unit-only), applies its outcomes, and
+                               reaps and re-issues silent commands.
   spec_match.py                Compares an observed spec_fingerprint against the
                                InfoSource's own source_specs via co-core's shared
                                derivation (cannobserv#309). Every uncertain branch
@@ -220,6 +220,7 @@ src/core/                      Domain logic
                                Its own module so the API schema and the bus
                                consumer can share the rule without either
                                dragging in the ORM.
+  capture_policy.py            An InfoSource's capture policy (#380).
   rep_fields.py                The derived half of an InfoItem's rep_fields bag:
                                <key>_slug companions via co-core's
                                normalize_string, the one slugger the cluster

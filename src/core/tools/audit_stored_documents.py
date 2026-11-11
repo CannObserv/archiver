@@ -31,6 +31,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
+from src.core.capture_policy import validate_capture_policy
 from src.core.models import (
     Domain,
     InfoItem,
@@ -161,9 +162,21 @@ def _rep_spec_findings(row_id: str, document: object, *, frozen: bool) -> list[F
     return [Finding("rep_spec", row_id, None, errors, frozen=frozen)] if errors else []
 
 
+def _capture_policy_findings(row_id: str, document: object) -> list[Finding]:
+    errors = _errors(validate_capture_policy, document)
+    return [Finding("capture_policy", row_id, None, errors)] if errors else []
+
+
 def info_source_findings(src: InfoSource) -> list[Finding]:
-    """The stored ``source_specs`` of one InfoSource, judged as the sweep judges it."""
-    return _source_specs_findings(str(src.info_source_id), src.source_specs)
+    """One InfoSource's stored documents, judged as the sweep judges them.
+
+    ``source_specs``, then ``capture_policy`` when set (``NULL`` is "no policy").
+    """
+    row_id = str(src.info_source_id)
+    findings = _source_specs_findings(row_id, src.source_specs)
+    if src.capture_policy is not None:
+        findings += _capture_policy_findings(row_id, src.capture_policy)
+    return findings
 
 
 def info_item_findings(item: InfoItem) -> list[Finding]:
@@ -202,6 +215,10 @@ def _judge_notification_content(row_id: str, document: object, _flag: bool) -> l
     return [Finding("notification_content", row_id, None, errors)] if errors else []
 
 
+def _judge_capture_policy(row_id: str, document: object, _flag: bool) -> list[Finding]:
+    return _capture_policy_findings(row_id, document)
+
+
 def _judge_rep_fields(row_id: str, bag: object, linked: bool) -> list[Finding]:
     return _rep_fields_findings(row_id, bag, linked=linked)
 
@@ -222,6 +239,16 @@ KINDS: tuple[DocumentKind, ...] = (
         ),
         _judge_source_specs,
         per_entry=True,
+    ),
+    DocumentKind(
+        "capture_policy",
+        InfoSource.capture_policy,
+        (validate_capture_policy,),
+        # NULL is "no policy", not a document to judge (archiver#380 slice C).
+        select(InfoSource.info_source_id, InfoSource.capture_policy, false())
+        .where(InfoSource.capture_policy.is_not(None))
+        .order_by(InfoSource.info_source_id),
+        _judge_capture_policy,
     ),
     DocumentKind(
         "watch_spec",

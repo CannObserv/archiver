@@ -20,14 +20,14 @@ from src.core.models import (
     SourceRevision,
 )
 from src.core.services.capture import (
-    DEFAULT_FULL_PAGE,
     DEFAULT_REAP_HORIZON,
-    DEFAULT_VIEWPORT,
     CaptureAlreadyOpen,
     CaptureDisabled,
+    CapturePolicyInvalid,
     capture_enabled,
     latest_capture,
     request_capture,
+    set_capture_policy,
 )
 from src.core.services.registry_announcement import announce_for_info_source
 from src.core.tools.audit_stored_documents import info_source_findings
@@ -48,7 +48,14 @@ from src.core.tools.update_info_source_specs import (
     update_info_source_specs,
 )
 from src.dashboard.capture_view import POLL_SECONDS as CAPTURE_POLL_SECONDS
-from src.dashboard.capture_view import capture_view
+from src.dashboard.capture_view import (
+    PolicyForm,
+    PolicyFormError,
+    capture_view,
+    parse_policy_form,
+    policy_form,
+    policy_view,
+)
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
@@ -164,13 +171,34 @@ async def _capture_context(src: InfoSource, session: AsyncSession) -> dict:
     """
     enabled = capture_enabled()
     command = await latest_capture(session, src.info_source_id) if enabled else None
-    width, height = DEFAULT_VIEWPORT
     return {
         "src": src,
         "capture_enabled": enabled,
         "capture": capture_view(command, now=datetime.now(UTC), horizon=DEFAULT_REAP_HORIZON),
-        "capture_profile": {"width": width, "height": height, "full_page": DEFAULT_FULL_PAGE},
         "capture_poll_seconds": CAPTURE_POLL_SECONDS,
+    }
+
+
+async def _capture_policy_context(
+    src: InfoSource,
+    session: AsyncSession,
+    *,
+    policy_error: str | None = None,
+    policy_input: PolicyForm | None = None,
+) -> dict:
+    """Everything ``info_sources/_capture_policy_card.html`` reads but ``swapped`` (#380 C).
+
+    The card's one builder, spread by the detail page, the specs editor's 422
+    fallback and the policy POST. ``policy_input`` echoes a refused submission
+    so the operator's edit survives; otherwise the form shows the stored policy.
+    ``session`` is unused: every registered builder takes one (test_partial_contracts).
+    """
+    return {
+        "src": src,
+        "capture_enabled": capture_enabled(),
+        "policy": policy_view(src.capture_policy),
+        "policy_form": policy_input or policy_form(src.capture_policy),
+        "policy_error": policy_error,
     }
 
 
@@ -301,6 +329,7 @@ async def detail_info_source(
     ctx = {
         **await _detail_context(src, user, session),
         **await _capture_context(src, session),
+        **await _capture_policy_context(src, session),
     }
     return _templates.TemplateResponse(request, "info_sources/detail.html", ctx)
 
@@ -348,6 +377,7 @@ async def update_info_source_specs_view(
                 src, user, session, specs_error=error, specs_input=source_specs
             ),
             **await _capture_context(src, session),
+            **await _capture_policy_context(src, session),
         }
         return _templates.TemplateResponse(
             request, "info_sources/detail.html", ctx, status_code=422
@@ -403,6 +433,9 @@ async def update_info_source_specs_view(
 # ---------------------------------------------------------------------------
 
 _CAPTURE_OPEN_FLASH = "A capture is already pending for this source - wait for its answer."
+_CAPTURE_POLICY_INVALID_FLASH = (
+    "This source's capture policy no longer validates - save it again, then capture."
+)
 _CAPTURE_WRITE_FAILED_FLASH = "Couldn't request the capture - nothing was sent."
 
 
@@ -447,6 +480,9 @@ async def capture_now(
     except CaptureAlreadyOpen:
         await session.rollback()
         flash = {"level": "warning", "body": _CAPTURE_OPEN_FLASH}
+    except CapturePolicyInvalid:
+        await session.rollback()
+        flash = {"level": "error", "body": _CAPTURE_POLICY_INVALID_FLASH}
     except CaptureDisabled as e:
         # The switch flipped between the gate and the write.
         await session.rollback()
@@ -464,4 +500,75 @@ async def capture_now(
     response = _templates.TemplateResponse(request, "info_sources/_capture_card.html", context)
     if flash is not None:
         response.headers["HX-Trigger"] = json.dumps({"showFlash": flash})
+    return response
+
+
+# ---------------------------------------------------------------------------
+# POST /{source_id}/capture-policy  (archiver#380 slice C)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{source_id}/capture-policy", response_model=None)
+async def save_capture_policy(
+    source_id: str,
+    request: Request,
+    action: str = Form(default="save"),
+    width: str = Form(default=""),
+    height: str = Form(default=""),
+    full_page: str | None = Form(default=None),
+    wait_kind: str = Form(default=""),
+    wait_selector: str = Form(default=""),
+    wait_seconds: str = Form(default=""),
+    on_revision: str | None = Form(default=None),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse | RedirectResponse:
+    """Save or clear the source's capture policy; the next capture sends it.
+
+    An editor card (docs/SCREENS.md): HTMX swaps ``#capture-policy-card`` in
+    place, a refusal at 200 with the error and the input echoed; without JS a
+    303 on success and a full-page 422 on a refusal. Sends no command.
+    """
+    _require_capture()
+    src = await _resolve_source(source_id, session)
+    is_htmx = bool(request.headers.get("HX-Request"))
+    submitted = PolicyForm(
+        width=width,
+        height=height,
+        full_page=full_page is not None,
+        wait_kind=wait_kind,
+        wait_selector=wait_selector,
+        wait_seconds=wait_seconds,
+        on_revision=on_revision is not None,
+    )
+    try:
+        policy = None if action == "clear" else parse_policy_form(submitted)
+    except PolicyFormError as e:
+        context = await _capture_policy_context(
+            src, session, policy_error=str(e), policy_input=submitted
+        )
+        if is_htmx:
+            return _templates.TemplateResponse(
+                request, "info_sources/_capture_policy_card.html", {**context, "swapped": True}
+            )
+        ctx = {
+            **await _detail_context(src, user, session),
+            **await _capture_context(src, session),
+            **context,
+        }
+        return _templates.TemplateResponse(
+            request, "info_sources/detail.html", ctx, status_code=422
+        )
+
+    await set_capture_policy(session, src.info_source_id, policy)
+    await session.commit()
+    if not is_htmx:
+        return RedirectResponse(url=f"/dashboard/info-sources/{source_id}", status_code=303)
+    src = await _resolve_source(source_id, session)
+    context = {**await _capture_policy_context(src, session), "swapped": True}
+    response = _templates.TemplateResponse(
+        request, "info_sources/_capture_policy_card.html", context
+    )
+    body = "Capture policy cleared." if policy is None else "Capture policy saved."
+    response.headers["HX-Trigger"] = json.dumps({"showFlash": {"level": "success", "body": body}})
     return response

@@ -1,5 +1,9 @@
 """Contains all the data models used in inputs/outputs"""
 
+from .capture_policy import CapturePolicy
+from .capture_viewport_policy import CaptureViewportPolicy
+from .capture_wait_policy import CaptureWaitPolicy
+from .capture_wait_policy_kind import CaptureWaitPolicyKind
 from .chunk_preview_out import ChunkPreviewOut
 from .content_config import ContentConfig
 from .content_config_overrides import ContentConfigOverrides
@@ -48,9 +52,11 @@ from .info_item_tags_put import InfoItemTagsPut
 from .info_item_watch_active_put import InfoItemWatchActivePut
 from .info_item_watch_spec_put import InfoItemWatchSpecPut
 from .info_item_watch_spec_put_document import InfoItemWatchSpecPutDocument
+from .info_source_capture_policy_patch import InfoSourceCapturePolicyPatch
 from .info_source_create import InfoSourceCreate
 from .info_source_create_source_specs_item import InfoSourceCreateSourceSpecsItem
 from .info_source_out import InfoSourceOut
+from .info_source_out_capture_policy_type_0 import InfoSourceOutCapturePolicyType0
 from .info_source_out_source_specs_item import InfoSourceOutSourceSpecsItem
 from .info_source_patch import InfoSourcePatch
 from .info_source_patch_source_specs_item import InfoSourcePatchSourceSpecsItem
@@ -127,6 +133,10 @@ from .validate_watch_spec_request_document import ValidateWatchSpecRequestDocume
 from .validate_watch_spec_response import ValidateWatchSpecResponse
 
 __all__ = (
+    "CapturePolicy",
+    "CaptureViewportPolicy",
+    "CaptureWaitPolicy",
+    "CaptureWaitPolicyKind",
     "ChunkPreviewOut",
     "ContentConfig",
     "ContentConfigOverrides",
@@ -173,9 +183,11 @@ __all__ = (
     "InfoItemWatchActivePut",
     "InfoItemWatchSpecPut",
     "InfoItemWatchSpecPutDocument",
+    "InfoSourceCapturePolicyPatch",
     "InfoSourceCreate",
     "InfoSourceCreateSourceSpecsItem",
     "InfoSourceOut",
+    "InfoSourceOutCapturePolicyType0",
     "InfoSourceOutSourceSpecsItem",
     "InfoSourcePatch",
     "InfoSourcePatchSourceSpecsItem",

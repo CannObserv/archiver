@@ -31,6 +31,7 @@ from sqlalchemy import func, select
 from ulid import ULID
 
 from src.core.models import (
+    CaptureCommand,
     ChangesOutboxRow,
     InfoItem,
     InfoItemSource,
@@ -38,7 +39,7 @@ from src.core.models import (
     PersistCommand,
     SourceRevision,
 )
-from src.core.services import persist_issuance
+from src.core.services import capture, persist_issuance
 from src.core.services.source_revision import (
     RevisionFacts,
     SourceRevisionIdConflictError,
@@ -785,3 +786,71 @@ async def test_a_redelivery_does_not_rearm(session, info_source, persist_on):
     await record_revision(session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST))
 
     assert len(await _persist_commands(session)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Viewport capture on a new revision (archiver#380 slice C, D3): opt-in per
+# source, in the revision's transaction, never on a redelivery.
+# ---------------------------------------------------------------------------
+
+
+async def _captures(session) -> list[CaptureCommand]:
+    result = await session.execute(select(CaptureCommand).order_by(CaptureCommand.issued_at))
+    return list(result.scalars().all())
+
+
+@pytest.fixture
+def capture_on(monkeypatch):
+    monkeypatch.setenv(capture.ENABLED_ENV, "1")
+
+
+@pytest.mark.asyncio
+async def test_a_new_revision_of_an_opted_in_source_is_captured(session, info_source, capture_on):
+    info_source.capture_policy = {"on_revision": True}
+    row, inserted = await record_revision(session, _facts(info_source.info_source_id))
+
+    assert inserted is True
+    [command] = await _captures(session)
+    assert command.source_revision_id == row.source_revision_id
+    assert command.state == "requested"
+
+
+@pytest.mark.asyncio
+async def test_a_redelivered_revision_captures_nothing_more(session, info_source, capture_on):
+    info_source.capture_policy = {"on_revision": True}
+    await record_revision(session, _facts(info_source.info_source_id))
+    [first] = await _captures(session)
+    first.state = "stored"
+    first.closed_at = datetime.now(UTC)
+
+    _, inserted = await record_revision(session, _facts(info_source.info_source_id))
+
+    assert inserted is False
+    assert len(await _captures(session)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_revision_of_a_source_without_a_policy_is_not_captured(
+    session, info_source, capture_on
+):
+    await record_revision(session, _facts(info_source.info_source_id))
+    assert await _captures(session) == []
+
+
+@pytest.mark.asyncio
+async def test_a_capture_defect_does_not_cost_the_revision(
+    session, info_source, capture_on, monkeypatch
+):
+    """CR 2: the revision lands; the capture failure is logged, not raised."""
+    info_source.capture_policy = {"on_revision": True}
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("capture defect")
+
+    monkeypatch.setattr(capture, "_issue", _boom)
+
+    row, inserted = await record_revision(session, _facts(info_source.info_source_id))
+
+    assert inserted is True
+    assert await session.get(SourceRevision, row.source_revision_id) is not None
+    assert await _captures(session) == []

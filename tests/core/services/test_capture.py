@@ -11,7 +11,10 @@ Covers:
 5. ``capture_failed``: terminal closes, non-terminal records and stays open,
    a failure never overrides a success, an older fact never overrides a newer
 6. Unknown ``command_id`` → ``UnknownCommandError`` (ack-and-drop upstream)
-7. The reaper: abandons silent commands past the horizon and re-issues nothing
+7. The reaper: abandons silent commands past the horizon
+8. Keeping it: ``capture_stored`` issues ``content.persist`` (slice B)
+9. Slice C: the source's policy shapes every command; a new revision of an
+   opted-in source issues one; the reaper re-issues a silent one, capped
 """
 
 from __future__ import annotations
@@ -29,31 +32,37 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
+from src.core.capture_policy import DEFAULT_POLICY, CapturePolicy
 from src.core.models import (
     AppUser,
     CaptureCommand,
     ChangesOutboxRow,
     InfoSource,
     PersistCommand,
+    SourceRevision,
 )
 from src.core.services import capture, persist_issuance
 from src.core.services.capture import (
-    DEFAULT_FULL_PAGE,
-    DEFAULT_VIEWPORT,
     ENABLED_ENV,
+    MAX_CAPTURE_REISSUES,
     REASON_NO_FACT,
     CaptureAlreadyOpen,
     CaptureDisabled,
+    CapturePolicyInvalid,
     apply_capture_failed,
     apply_capture_stored,
     capture_enabled,
+    capture_for_revision,
     latest_capture,
     reap_open_captures,
     request_capture,
+    set_capture_policy,
 )
 from src.core.services.replication_writeback import UnknownCommandError
 
 T0 = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+DEFAULT_VIEWPORT = (DEFAULT_POLICY.viewport.width, DEFAULT_POLICY.viewport.height)
+DEFAULT_FULL_PAGE = DEFAULT_POLICY.full_page
 ON = {ENABLED_ENV: "1"}
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
@@ -187,9 +196,10 @@ async def test_a_request_writes_the_row_and_the_command_together(session):
 
 
 def test_the_default_profile():
-    """The one profile slice A sends; slice C's policy replaces it per source."""
+    """What a source with no policy sends: slice A's profile (slice C)."""
     assert DEFAULT_VIEWPORT == (1280, 800)
     assert DEFAULT_FULL_PAGE is True
+    assert DEFAULT_POLICY.wait is None
 
 
 @pytest.mark.asyncio
@@ -436,7 +446,7 @@ async def test_an_unknown_command_raises(session):
 
 
 @pytest.mark.asyncio
-async def test_the_reaper_abandons_silent_commands_and_reissues_nothing(session):
+async def test_the_reaper_abandons_silent_commands_past_the_horizon(session):
     old_source = await _source(session)
     fresh_source = await _source(session, "https://example.com/fresh")
     old = await _issued(session, old_source)
@@ -444,15 +454,13 @@ async def test_the_reaper_abandons_silent_commands_and_reissues_nothing(session)
     old.issued_at = datetime.now(UTC) - timedelta(hours=2)
     await session.flush()
 
-    abandoned = await reap_open_captures(session, horizon=timedelta(hours=1))
+    result = await reap_open_captures(session, horizon=timedelta(hours=1), environ=ON)
 
-    assert abandoned == 1
+    assert result.abandoned == 1
     assert old.state == "abandoned"
     assert old.reason == REASON_NO_FACT
     assert old.closed_at is not None
     assert fresh.state == "requested"
-    # Slice A: a person is the re-issuer, so the reaper writes no command.
-    assert len(await _outbox(session)) == 2
 
 
 @pytest.mark.asyncio
@@ -463,7 +471,8 @@ async def test_the_reaper_leaves_closed_commands_alone(session):
     command.issued_at = datetime.now(UTC) - timedelta(hours=2)
     await session.flush()
 
-    assert await reap_open_captures(session, horizon=timedelta(hours=1)) == 0
+    result = await reap_open_captures(session, horizon=timedelta(hours=1), environ=ON)
+    assert (result.abandoned, result.reissued) == (0, 0)
     assert command.state == "stored"
 
 
@@ -538,3 +547,272 @@ async def test_no_persist_while_persist_issuance_is_off(session, monkeypatch):
 
     assert command.state == "stored"
     assert await _persists(session) == []
+
+
+# --- 9. slice C: the policy, the revision trigger, the capped re-issue ---
+
+POLICY = {
+    "viewport": {"width": 390, "height": 844},
+    "full_page": False,
+    "wait": {"kind": "selector", "selector": "#main", "seconds": None},
+    "on_revision": True,
+}
+SENT_WAIT = {"kind": "selector", "selector": "#main", "seconds": None}
+
+
+async def _revision(session: AsyncSession, source: InfoSource) -> SourceRevision:
+    revision = SourceRevision(
+        info_source_id=source.info_source_id,
+        content_fingerprint="sha256:" + str(ULID()).lower().ljust(64, "0")[:64],
+        captured_at=T0,
+    )
+    session.add(revision)
+    await session.flush()
+    return revision
+
+
+@pytest.mark.asyncio
+async def test_a_request_sends_the_sources_policy(session):
+    source = await _source(session)
+    source.capture_policy = POLICY
+    await session.flush()
+
+    command = await _issued(session, source)
+
+    [row] = await _outbox(session)
+    sent = ContentCaptureCommand.model_validate(row.payload)
+    assert (sent.viewport.width, sent.viewport.height, sent.full_page) == (390, 844, False)
+    assert sent.wait.model_dump() == SENT_WAIT
+    assert (command.viewport_width, command.viewport_height) == (390, 844)
+    assert command.full_page is False
+    assert command.wait == SENT_WAIT
+    assert (command.attempt, command.reissue_of, command.source_revision_id) == (1, None, None)
+
+
+@pytest.mark.asyncio
+async def test_a_request_with_no_policy_sends_the_default(session):
+    source = await _source(session)
+    command = await _issued(session, source)
+    assert (command.viewport_width, command.viewport_height) == DEFAULT_VIEWPORT
+    assert command.full_page is DEFAULT_FULL_PAGE
+    assert command.wait is None
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_stored_policy_refuses_the_request_and_writes_nothing(session):
+    """Validated on write, so only a later-tightened schema reaches here: never send it."""
+    source = await _source(session)
+    source.capture_policy = {"viewport": {"width": 0, "height": 800}}
+    await session.flush()
+
+    with pytest.raises(CapturePolicyInvalid):
+        await request_capture(session, source.info_source_id, requested_by=None, environ=ON)
+    assert await _outbox(session) == []
+
+
+@pytest.mark.asyncio
+async def test_a_new_revision_of_an_opted_in_source_is_captured(session):
+    source = await _source(session)
+    source.capture_policy = POLICY
+    revision = await _revision(session, source)
+
+    command = await capture_for_revision(session, revision, environ=ON)
+
+    assert command is not None
+    assert command.source_revision_id == revision.source_revision_id
+    assert command.requested_by is None
+    assert (command.viewport_width, command.full_page, command.wait) == (390, False, SENT_WAIT)
+    [row] = await _outbox(session)
+    assert row.payload["command_id"] == command.command_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "policy",
+    [None, {**POLICY, "on_revision": False}],
+    ids=["no-policy", "on-demand-only"],
+)
+async def test_a_source_not_opted_in_is_not_captured_on_revision(session, policy):
+    source = await _source(session)
+    source.capture_policy = policy
+    revision = await _revision(session, source)
+
+    assert await capture_for_revision(session, revision, environ=ON) is None
+    assert await _outbox(session) == []
+
+
+@pytest.mark.asyncio
+async def test_no_revision_capture_while_the_switch_is_off(session):
+    source = await _source(session)
+    source.capture_policy = POLICY
+    revision = await _revision(session, source)
+
+    assert await capture_for_revision(session, revision, environ={}) is None
+    assert await _outbox(session) == []
+
+
+@pytest.mark.asyncio
+async def test_a_revision_while_a_capture_is_open_issues_nothing(session):
+    """One open command per source: the open one renders the live page anyway."""
+    source = await _source(session)
+    source.capture_policy = POLICY
+    await _issued(session, source)
+    revision = await _revision(session, source)
+
+    assert await capture_for_revision(session, revision, environ=ON) is None
+    assert len(await _outbox(session)) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_stored_policy_skips_the_revision_capture(session):
+    """The bus consumer must not dead-letter a revision over a capture setting."""
+    source = await _source(session)
+    source.capture_policy = {"on_revision": True, "viewport": {"width": 0, "height": 1}}
+    revision = await _revision(session, source)
+
+    assert await capture_for_revision(session, revision, environ=ON) is None
+    assert await _outbox(session) == []
+
+
+async def _silent(session: AsyncSession, command: CaptureCommand) -> None:
+    command.issued_at = datetime.now(UTC) - timedelta(hours=2)
+    await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_the_reaper_reissues_a_silent_command_with_what_it_sent(session):
+    """C2: silence is "still trying" or "lost"; re-issue under a fresh command_id."""
+    source = await _source(session)
+    source.capture_policy = POLICY
+    revision = await _revision(session, source)
+    user = AppUser(external_id="ext-380c", email="c@example.com")
+    session.add(user)
+    await session.flush()
+    first = await request_capture(session, source.info_source_id, requested_by=user.id, environ=ON)
+    first.source_revision_id = revision.source_revision_id
+    await _silent(session, first)
+    # The policy changing after the send does not change what the re-issue asks.
+    source.capture_policy = {**POLICY, "full_page": True}
+
+    result = await reap_open_captures(session, horizon=timedelta(hours=1), environ=ON)
+
+    assert (result.abandoned, result.reissued) == (1, 1)
+    assert first.state == "abandoned"
+    second = await latest_capture(session, source.info_source_id)
+    assert second.command_id != first.command_id
+    assert (second.reissue_of, second.attempt, second.state) == (first.command_id, 2, "requested")
+    assert second.source_revision_id == revision.source_revision_id
+    assert second.requested_by == user.id
+    assert (second.url, second.viewport_width, second.viewport_height) == (first.url, 390, 844)
+    assert (second.full_page, second.wait) == (False, SENT_WAIT)
+    rows = await _outbox(session)
+    assert [r.payload["command_id"] for r in rows] == [first.command_id, second.command_id]
+    assert ContentCaptureCommand.model_validate(rows[1].payload).full_page is False
+
+
+@pytest.mark.asyncio
+async def test_the_reissue_is_capped(session):
+    source = await _source(session)
+    command = await _issued(session, source)
+    for _ in range(MAX_CAPTURE_REISSUES):
+        await _silent(session, command)
+        result = await reap_open_captures(session, horizon=timedelta(hours=1), environ=ON)
+        assert result.reissued == 1
+        command = await latest_capture(session, source.info_source_id)
+
+    assert command.attempt == 1 + MAX_CAPTURE_REISSUES
+    await _silent(session, command)
+    result = await reap_open_captures(session, horizon=timedelta(hours=1), environ=ON)
+
+    assert (result.abandoned, result.reissued) == (1, 0)
+    assert (await latest_capture(session, source.info_source_id)).state == "abandoned"
+    assert len(await _outbox(session)) == 1 + MAX_CAPTURE_REISSUES
+
+
+@pytest.mark.asyncio
+async def test_no_reissue_while_the_switch_is_off(session):
+    source = await _source(session)
+    command = await _issued(session, source)
+    await _silent(session, command)
+
+    result = await reap_open_captures(session, horizon=timedelta(hours=1), environ={})
+
+    assert (result.abandoned, result.reissued) == (1, 0)
+    assert command.state == "abandoned"
+    assert len(await _outbox(session)) == 1
+
+
+@pytest.mark.asyncio
+async def test_no_reissue_when_a_newer_command_exists(session):
+    """The source's newest command already answers for it."""
+    source = await _source(session)
+    old = await _issued(session, source)
+    await _silent(session, old)
+    # Bypass the one-open rule to stand in for a race: a newer command exists.
+    newer = CaptureCommand(
+        command_id=str(ULID()),
+        info_source_id=source.info_source_id,
+        url=source.url,
+        viewport_width=1280,
+        viewport_height=800,
+        full_page=True,
+        state="stored",
+        issued_at=datetime.now(UTC),
+    )
+    session.add(newer)
+    await session.flush()
+
+    result = await reap_open_captures(session, horizon=timedelta(hours=1), environ=ON)
+
+    assert (result.abandoned, result.reissued) == (1, 0)
+    assert len(await _outbox(session)) == 1
+
+
+def test_the_reissue_cap():
+    assert MAX_CAPTURE_REISSUES == 2
+
+
+@pytest.mark.asyncio
+async def test_set_capture_policy_stores_the_normalized_document(session):
+    source = await _source(session)
+    stored = await set_capture_policy(
+        session, source.info_source_id, CapturePolicy.model_validate({"on_revision": True})
+    )
+    assert stored.capture_policy == {
+        "viewport": {"width": 1280, "height": 800},
+        "full_page": True,
+        "wait": None,
+        "on_revision": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_set_capture_policy_none_clears_it(session):
+    source = await _source(session)
+    source.capture_policy = POLICY
+    stored = await set_capture_policy(session, source.info_source_id, None)
+    assert stored.capture_policy is None
+
+
+@pytest.mark.asyncio
+async def test_set_capture_policy_on_an_unknown_source_raises(session):
+    with pytest.raises(LookupError):
+        await set_capture_policy(session, ULID(), None)
+
+
+@pytest.mark.asyncio
+async def test_a_reissue_defect_keeps_the_abandon(session, monkeypatch):
+    """CR 2: a failing re-issue must not roll back the pass's abandons."""
+    source = await _source(session)
+    command = await _issued(session, source)
+    await _silent(session, command)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("reissue defect")
+
+    monkeypatch.setattr(capture, "_issue", _boom)
+
+    result = await reap_open_captures(session, horizon=timedelta(hours=1), environ=ON)
+
+    assert (result.abandoned, result.reissued) == (1, 0)
+    assert command.state == "abandoned"

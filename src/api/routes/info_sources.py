@@ -9,11 +9,17 @@ from ulid import ULID
 
 from src.api.deps import get_db_session, require_api_key
 from src.api.errors import raise_422, raise_envelope
-from src.api.schemas.info_source import InfoSourceCreate, InfoSourceOut, InfoSourcePatch
+from src.api.schemas.info_source import (
+    InfoSourceCapturePolicyPatch,
+    InfoSourceCreate,
+    InfoSourceOut,
+    InfoSourcePatch,
+)
 from src.api.schemas.pagination import Page
 from src.api.schemas.types import ULIDStr
 from src.api.serializers import info_source_to_out
 from src.core.models import InfoSource
+from src.core.services.capture import set_capture_policy
 from src.core.services.registry_announcement import announce_for_info_source
 from src.core.tools.create_info_source import (
     CreateInfoSourceError,
@@ -93,6 +99,28 @@ async def patch_info_source_specs(
     await session.commit()
     await session.refresh(src)
 
+    return info_source_to_out(src)
+
+
+@router.patch("/{info_source_id}/capture-policy", response_model=InfoSourceOut)
+async def patch_info_source_capture_policy(
+    info_source_id: ULIDStr,
+    body: InfoSourceCapturePolicyPatch,
+    session: AsyncSession = Depends(get_db_session),
+    _key=Depends(require_api_key),
+) -> InfoSourceOut:
+    """Set or clear the InfoSource's viewport-capture policy (archiver#380).
+
+    Replaced whole: omitted keys take their defaults, so the response shows the
+    stored document. ``on_revision: true`` captures each new revision; ``null``
+    clears the policy. Takes effect at the next capture; sends nothing itself.
+    """
+    try:
+        src = await set_capture_policy(session, ULID.from_str(info_source_id), body.capture_policy)
+    except LookupError as e:
+        raise_envelope(404, "lookup", "InfoSource not found", source_exc=e)
+    await session.commit()
+    await session.refresh(src)
     return info_source_to_out(src)
 
 

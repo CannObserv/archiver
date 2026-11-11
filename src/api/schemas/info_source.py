@@ -5,6 +5,14 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from src.core.capture_policy import CapturePolicy
+
+_CAPTURE_POLICY_DOC = (
+    "What a viewport capture of this source sends (viewport, full_page, wait) and whether "
+    "each new revision triggers one (on_revision). null = no policy: an on-demand capture "
+    "uses 1280x800, full page, no wait, and no revision triggers one (archiver#380)."
+)
+
 
 class InfoSourceCreate(BaseModel):
     """Request body for POST /info-sources."""
@@ -35,6 +43,19 @@ class InfoSourcePatch(BaseModel):
     )
 
 
+class InfoSourceCapturePolicyPatch(BaseModel):
+    """Request body for PATCH /info-sources/{id}/capture-policy."""
+
+    model_config = {"extra": "forbid"}
+
+    capture_policy: CapturePolicy | None = Field(
+        description=(
+            "The replacement policy, replaced whole; omitted keys take their defaults. "
+            "null clears it. Each viewport side 1..4096; a delay wait at most 30 s."
+        )
+    )
+
+
 class InfoSourceOut(BaseModel):
     """Projection of an info_sources row."""
 
@@ -45,3 +66,9 @@ class InfoSourceOut(BaseModel):
         description="Hostname derived from URL; references the domains table."
     )
     created_at: datetime = Field(description="UTC timestamp when the InfoSource was created.")
+    # As stored, not re-validated: a schema tightened later must not 500 every
+    # read of a row the sweep would flag (the notification content_config rule).
+    capture_policy: dict[str, Any] | None = Field(
+        default=None,
+        description=_CAPTURE_POLICY_DOC + " As stored: a CapturePolicy with every default filled.",
+    )

@@ -7,7 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from ulid import ULID
 
-from src.core.models import AppUser, CaptureCommand, InfoSource
+from src.core.models import AppUser, CaptureCommand, InfoSource, SourceRevision
 
 T0 = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
 
@@ -127,3 +127,92 @@ async def test_deleting_the_operator_keeps_the_command(session):
     got = await session.get(CaptureCommand, command_id)
     assert got is not None
     assert got.requested_by is None
+
+
+# --- slice C: the revision link, the re-issue chain, the attempt -------------
+
+
+async def _revision(session, source: InfoSource) -> SourceRevision:
+    revision = SourceRevision(
+        info_source_id=source.info_source_id,
+        content_fingerprint="sha256:" + "d" * 64,
+        captured_at=T0,
+    )
+    session.add(revision)
+    await session.flush()
+    return revision
+
+
+@pytest.mark.asyncio
+async def test_a_command_defaults_to_attempt_one_with_no_revision_or_predecessor(session):
+    source = await _source(session)
+    row = _command(source)
+    session.add(row)
+    await session.commit()
+    got = await session.get(CaptureCommand, row.command_id)
+    assert got.attempt == 1
+    assert got.source_revision_id is None
+    assert got.reissue_of is None
+
+
+@pytest.mark.asyncio
+async def test_attempt_below_one_is_rejected_by_the_database(session):
+    source = await _source(session)
+    session.add(_command(source, attempt=0))
+    with pytest.raises(IntegrityError):
+        await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_a_command_names_the_revision_it_accompanies(session):
+    source = await _source(session)
+    revision = await _revision(session, source)
+    row = _command(source, source_revision_id=revision.source_revision_id)
+    session.add(row)
+    await session.commit()
+    got = await session.get(CaptureCommand, row.command_id)
+    assert got.source_revision_id == revision.source_revision_id
+
+
+@pytest.mark.asyncio
+async def test_deleting_the_revision_keeps_the_command(session):
+    """The link is temporal context, not ownership: SET NULL."""
+    source = await _source(session)
+    revision = await _revision(session, source)
+    row = _command(source, source_revision_id=revision.source_revision_id)
+    command_id = row.command_id
+    session.add(row)
+    await session.commit()
+
+    await session.execute(
+        delete(SourceRevision).where(
+            SourceRevision.source_revision_id == revision.source_revision_id
+        )
+    )
+    await session.commit()
+    session.expire_all()
+
+    got = await session.get(CaptureCommand, command_id)
+    assert got is not None
+    assert got.source_revision_id is None
+
+
+@pytest.mark.asyncio
+async def test_a_reissue_names_its_predecessor(session):
+    source = await _source(session)
+    first = _command(source, state="abandoned")
+    session.add(first)
+    await session.flush()
+    second = _command(source, reissue_of=first.command_id, attempt=2)
+    session.add(second)
+    await session.commit()
+    got = await session.get(CaptureCommand, second.command_id)
+    assert (got.reissue_of, got.attempt) == (first.command_id, 2)
+
+
+@pytest.mark.asyncio
+async def test_a_reissue_of_an_unknown_command_is_rejected(session):
+    source = await _source(session)
+    session.add(_command(source, reissue_of=str(ULID()), attempt=2))
+    with pytest.raises(IntegrityError):
+        await session.flush()

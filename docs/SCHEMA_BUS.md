@@ -93,11 +93,16 @@ keeps the registry tables; identifiers are verbatim there and here.
   `rejected_at` (the fact's `occurred_at`), first write wins. Success is not stored: it is read
   at render from `watch_status.last_full_fetch_at > requested_at`. Written with its
   `info.watch-check` outbox row in one transaction. Ladder: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
-- **`CaptureCommand`** (`capture_commands`) — one `content.capture` command (archiver#380
-  slice A); `PersistCommand`'s shape. States `requested` → `stored` | `failed` | `abandoned`
+- **`CaptureCommand`** (`capture_commands`) — one `content.capture` command (archiver#380);
+  `PersistCommand`'s shape. States `requested` → `stored` | `failed` | `abandoned`
   (`CHECK`, because the open index hard-codes `requested`). `info_source_id` FK `CASCADE`;
   `requested_by` → `app_users.id` `SET NULL`. **What was sent**, verbatim: `url`,
-  `viewport_width`/`viewport_height`, `full_page`, `wait` (JSONB, `NULL` = after `load`).
+  `viewport_width`/`viewport_height`, `full_page`, `wait` (JSONB, the wire's `wait` as sent;
+  `NULL` = after `load`). **Why it was sent** (slice C): `source_revision_id` (FK
+  `source_revisions`, `SET NULL`) names the new revision that triggered it, `NULL` on demand -
+  temporal, since a capture renders the live page; `reissue_of` (self FK, `SET NULL`) names the
+  silent command a reaper re-issue repeats, and `attempt` (NOT NULL, default 1, `CHECK >= 1`)
+  counts the chain, capped at `1 + capture.MAX_CAPTURE_REISSUES`.
   **What came back**, from the first `capture_stored` (C1): `content_fingerprint` (bare hex, an
   address only), `blob_uri`, `media_type`, `size_bytes`, `image_width`/`image_height` (the
   stored PNG, not the viewport), `final_url`, `captured_at`, `blob_expires_at` (the temp

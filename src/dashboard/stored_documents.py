@@ -12,6 +12,7 @@ from src.core.tools.audit_stored_documents import Finding, error_text
 
 _LABELS = {
     "source_spec": "Source spec",
+    "capture_policy": "Capture policy",
     "watch_spec": "Watch spec",
     "rep_fields": "Rep Fields",
     "rep_spec": "RepSpec document",
@@ -21,6 +22,7 @@ _LABELS = {
 
 _PATHS = {
     "source_spec": "/dashboard/info-sources/{}",
+    "capture_policy": "/dashboard/info-sources/{}",
     "watch_spec": "/dashboard/info-items/{}",
     "rep_fields": "/dashboard/info-items/{}",
     "rep_spec": "/dashboard/rep-specs/{}",
@@ -31,6 +33,10 @@ _PATHS = {
 
 _REMEDIES = {
     "source_spec": "Edit the Source Specification and fix or remove the flagged keys.",
+    "capture_policy": (
+        "Save the Capture Policy card again: the form writes a fresh document "
+        "(with capture switched off, PATCH /info-sources/{id}/capture-policy)."
+    ),
     "watch_spec": "Set the cadence again: the Watcher panel writes a fresh document.",
     "rep_fields": "Edit the Rep Fields and fix or remove the flagged keys.",
     "rep_spec": "Edit the document - it is still a draft.",

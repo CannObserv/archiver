@@ -368,10 +368,13 @@ idempotency key the bare `command_id`. `src/core/services/watch_check.py`.
   ([BUS_CONSUMERS.md](BUS_CONSUMERS.md)); a dead-lettered command (`info.watch-check.dlq`,
   Watcher's) gets no answer at all. The state ladder: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 
-**`content.capture` - viewport capture (archiver#380 slice A).** The seventh producer
-surface, *command* kind: one `ContentCaptureCommandEmit` per click on InfoSource detail's
-**Capture now**, to Replicator's one group `replicator.capture` (CannObserv/replicator#138);
-idempotency key the bare `command_id`. `src/core/services/capture.py`. Normative obligations
+**`content.capture` - viewport capture (archiver#380).** The seventh producer
+surface, *command* kind: one `ContentCaptureCommandEmit` per occasion, to Replicator's one
+group `replicator.capture` (CannObserv/replicator#138); idempotency key the bare `command_id`.
+Three occasions (slice C): a click on InfoSource detail's **Capture now**; a **new revision**
+of a source whose `capture_policy` sets `on_revision` (issued by `record_revision` in the
+revision's transaction, never on a redelivery; the row names the revision); and the reaper's
+**re-issue** of a silent command (below). `src/core/services/capture.py`. Normative obligations
 (C1-C5) and the `reason` registry: Replicator's
 [`content-capture-issuer-contract.md`](https://github.com/CannObserv/replicator/blob/main/docs/contracts/content-capture-issuer-contract.md).
 
@@ -380,11 +383,20 @@ idempotency key the bare `command_id`. `src/core/services/capture.py`. Normative
   Replicator created `replicator.capture` at `0` before Archiver's first write (C5,
   CannObserv/broker#116).
 - **Producer posture:** outboxed with its `capture_commands` row in one transaction, **one
-  message per click**, a fresh ULID `command_id` each. One open command per source: a click
-  while the latest is `requested` writes nothing.
-- **Resolved values only (C4):** `url`, `info_source_id` (echoed, never routed on), the fixed
-  slice-A profile - viewport 1280×800, `full_page: true`, `wait: null` (after `load`). No
-  headers, no credential. The per-source policy is slice C.
+  message per occasion**, a fresh ULID `command_id` each. One open command per source: a
+  click while the latest is `requested` writes nothing, and a revision arriving then issues
+  nothing (the open command renders the live page anyway).
+- **Resolved values only (C4):** `url`, `info_source_id` (echoed, never routed on), and the
+  source's `capture_policy` - viewport, `full_page`, `wait` - or, with none, the default:
+  1280×800, `full_page: true`, `wait: null` (after `load`). No headers, no credential. A
+  stored policy that no longer validates sends nothing: Capture now is refused, a revision
+  is not captured (WARNING), and the revision itself still lands. So does any capture defect
+  on the two unattended paths (a SAVEPOINT; ERROR): the revision lands, the abandon stands.
+- **Re-issue, capped (C2):** the reaper abandons a command silent past 1 h and, in that
+  transaction, re-sends exactly what it sent under a fresh `command_id` (`reissue_of`,
+  `attempt + 1`), up to `capture.MAX_CAPTURE_REISSUES` (2) times, for every occasion. Not
+  while the switch is off, nor once the source has a newer command. A terminal
+  `capture_failed` is never re-issued: its remedy (another wait, a smaller page) is a person's.
 - **Never capped, never trimmed:** out of `trim_topics` and `topic_maxlen`
   (`tests/api/test_lifespan_bus_wiring.py`, `tests/core/changes/test_publisher.py`). broker's
   STREAMS.md: "never XTRIMmed". The grant is `+xadd ~content.capture` alone, with no read: an
