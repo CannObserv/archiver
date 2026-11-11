@@ -122,14 +122,23 @@ async def _sweep_captures(
 ) -> None:
     async with session_factory() as session:
         abandoned = await capture.reap_open_captures(session, horizon=horizon)
-        persisted = await persist_issuance.persist_missing_captures(session)
-        if abandoned or persisted:
+        if abandoned:
             await session.commit()
     if abandoned:
         logger.warning(
             "Abandoned silent capture commands past the horizon",
             extra={"abandoned": abandoned},
         )
+    # Slice B's catch-up, in its own transaction: a defect here must not roll
+    # back the abandons above (CR 11).
+    try:
+        async with session_factory() as session:
+            persisted = await persist_issuance.persist_missing_captures(session)
+            if persisted:
+                await session.commit()
+    except Exception:
+        logger.exception("Capture persist catch-up failed; capture abandons unaffected")
+        return
     if persisted:
         logger.info(
             "Issued content.persist for captures still owed one",

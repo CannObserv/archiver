@@ -375,3 +375,19 @@ async def test_the_capture_sweep_persists_a_stored_capture_owed_one(session_fact
     async with session_factory() as s:
         persists = (await s.execute(select(PersistCommand))).scalars().all()
     assert [p.capture_command_id for p in persists] == [command_id]
+
+
+@pytest.mark.asyncio
+async def test_a_failing_catch_up_does_not_cost_the_capture_abandon(session_factory, monkeypatch):
+    """CR 11: abandon and catch-up commit separately; a catch-up defect is contained."""
+    command_id = await _open_capture(session_factory, age=timedelta(hours=2))
+
+    async def _boom(*_args, **_kwargs):
+        raise RuntimeError("catch-up defect")
+
+    monkeypatch.setattr(persist_issuance, "persist_missing_captures", _boom)
+
+    await replication_reaper.sweep_once(session_factory, horizon=timedelta(hours=6))
+
+    state, reason, _ = await _capture_state(session_factory, command_id)
+    assert (state, reason) == (capture.STATE_ABANDONED, capture.REASON_NO_FACT)
