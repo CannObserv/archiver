@@ -221,6 +221,7 @@ src/core/                      Domain logic
                                consumer can share the rule without either
                                dragging in the ORM.
   capture_policy.py            An InfoSource's capture policy (#380).
+  capture_reader.py            Capture images, co-gcs-captures only (#380 D4).
   rep_fields.py                The derived half of an InfoItem's rep_fields bag:
                                <key>_slug companions via co-core's
                                normalize_string, the one slugger the cluster
