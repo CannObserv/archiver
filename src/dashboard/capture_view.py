@@ -16,9 +16,10 @@ from typing import Any, TypedDict
 from pydantic import ValidationError
 
 from src.core.capture_policy import CapturePolicy, effective_policy
+from src.core.capture_reader import image_uri
 from src.core.models import CaptureCommand
-from src.core.replication.permanent_store import permanent_blob_uri
-from src.core.services.capture import MAX_CAPTURE_REISSUES, STATE_REQUESTED
+from src.core.replication.permanent_store import in_captures_store, kept_capture_uri
+from src.core.services.capture import MAX_CAPTURE_REISSUES, STATE_REQUESTED, STATE_STORED
 from src.dashboard.watch_panel import format_age
 
 #: How often the card re-reads itself while its command is open.
@@ -52,12 +53,30 @@ class CaptureView(TypedDict):
     persisted_at: datetime | None
     horizon_minutes: int
     dlq: str
+    image_url: str | None
+    image_note: str | None
+
+
+#: Why a stored capture shows no image (archiver#380 D4), in the card's words.
+NOTE_OLD_STORE = (
+    "No image: stored before captures had their own bucket, beside raw downloads "
+    "Archiver may not read."
+)
+NOTE_NO_READER = "No image: capture images are not readable on this server."
 
 
 def capture_view(
-    command: CaptureCommand | None, *, now: datetime, horizon: timedelta
+    command: CaptureCommand | None,
+    *,
+    now: datetime,
+    horizon: timedelta,
+    image_reader: bool = False,
 ) -> CaptureView | None:
-    """``None`` for a source never captured; else the card's fields for ``command``."""
+    """``None`` for a source never captured; else the card's fields for ``command``.
+
+    ``image_reader``: whether the process holds the captures-bucket reader. The
+    image itself is fetched by the browser from the image route, never here.
+    """
     if command is None:
         return None
     expires = command.blob_expires_at
@@ -91,7 +110,26 @@ def capture_view(
         persisted_at=command.persisted_at,
         horizon_minutes=max(1, int(horizon.total_seconds() // 60)),
         dlq=DLQ,
+        **_image_fields(command, now=now, image_reader=image_reader),
     )
+
+
+def image_path(command: CaptureCommand) -> str:
+    """The dashboard route serving ``command``'s PNG."""
+    return f"/dashboard/info-sources/{command.info_source_id}/captures/{command.command_id}.png"
+
+
+def _image_fields(command: CaptureCommand, *, now: datetime, image_reader: bool) -> dict:
+    """``image_url`` when the browser can fetch the image, else ``image_note`` saying why."""
+    if command.state != STATE_STORED:
+        return {"image_url": None, "image_note": None}
+    if not in_captures_store(command.blob_uri):
+        return {"image_url": None, "image_note": NOTE_OLD_STORE}
+    if image_uri(command, now=now) is None:
+        return {"image_url": None, "image_note": None}  # expired, or not a PNG
+    if not image_reader:
+        return {"image_url": None, "image_note": NOTE_NO_READER}
+    return {"image_url": image_path(command), "image_note": None}
 
 
 def _kept_uri(command: CaptureCommand) -> str | None:
@@ -99,7 +137,7 @@ def _kept_uri(command: CaptureCommand) -> str | None:
     if command.persisted_at is None or command.content_fingerprint is None:
         return None
     try:
-        return permanent_blob_uri(command.content_fingerprint)
+        return kept_capture_uri(command.blob_uri, command.content_fingerprint)
     except ValueError:
         return None
 

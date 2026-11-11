@@ -31,6 +31,7 @@ import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +41,12 @@ from google.cloud import storage
 from google.oauth2 import service_account
 
 from src.core.logging import get_logger
-from src.core.replication.permanent_store import CAPTURES_BUCKET, in_captures_store
+from src.core.models import CaptureCommand
+from src.core.replication.permanent_store import (
+    CAPTURES_BUCKET,
+    in_captures_store,
+    kept_capture_uri,
+)
 
 logger = get_logger(__name__)
 
@@ -52,6 +58,10 @@ CREDENTIAL_NAME = "capture-reader"
 CREDENTIAL_FILE = "/etc/archiver/capture-reader.json"
 #: Seconds for one metadata read or one download.
 TIMEOUT_SECONDS = 30.0
+#: The one type served: the bytes go out inline, never as anything a browser runs.
+IMAGE_MEDIA_TYPE = "image/png"
+
+_bound: "CaptureReader | None" = None
 
 
 class CaptureUnavailable(Exception):
@@ -173,3 +183,39 @@ def announced_capture_reader(environ: Mapping[str, str] = os.environ) -> Capture
 async def read_capture(reader: CaptureReader, uri: str, digest: str) -> bytes:
     """The image's bytes, read off the loop. Raises :class:`CaptureUnavailable`."""
     return await asyncio.to_thread(reader.read, uri, digest)
+
+
+def bind(reader: CaptureReader | None) -> None:
+    """The lifespan's reader, for the dashboard's card builder and image route."""
+    global _bound
+    _bound = reader
+
+
+def bound() -> CaptureReader | None:
+    """The reader the lifespan bound, or ``None`` (dormant, or between lifespans)."""
+    return _bound
+
+
+def image_uri(command: CaptureCommand, *, now: datetime) -> str | None:
+    """Where ``command``'s image can be read, or ``None`` if Archiver may not or cannot.
+
+    Only a stored PNG in the captures bucket: one stored before the split lives
+    beside raw blobs (``content.blobs``). Kept, it is read where it is kept;
+    otherwise from the temporary store until ``blob_expires_at``.
+    """
+    if (
+        command.state != "stored"
+        or not command.content_fingerprint
+        or command.media_type != IMAGE_MEDIA_TYPE
+        or not in_captures_store(command.blob_uri)
+    ):
+        return None
+    if command.persisted_at is not None:
+        try:
+            return kept_capture_uri(command.blob_uri, command.content_fingerprint)
+        except ValueError:
+            return None
+    expires = command.blob_expires_at
+    if expires is not None and expires <= now:
+        return None
+    return command.blob_uri

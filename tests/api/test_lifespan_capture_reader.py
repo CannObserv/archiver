@@ -59,7 +59,9 @@ async def test_the_unit_shape_builds_one_reader_and_closes_it(
     with caplog.at_level(logging.INFO):
         async with lifespan(app):
             assert app.state.capture_reader is not None
+            assert capture_reader.bound() is app.state.capture_reader
             assert storage.gets == []  # no request at startup
     assert storage.closed
+    assert capture_reader.bound() is None
     assert "capture image reader configured (bucket co-gcs-captures)" in caplog.text
     assert KEY["client_email"] not in caplog.text
