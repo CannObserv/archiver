@@ -122,6 +122,17 @@ _CONTRACTS: dict[str, _Contract] = {
         behaviour=frozenset({"capture", "capture_enabled", "capture_poll_seconds"}),
         optional={"swapped": _SWAPPED},
     ),
+    # archiver#380 slice C: without `policy_form` the editor posts empty fields
+    # and every save is refused; without `policy` the card states no policy on a
+    # source that has one.
+    "info_sources/_capture_policy_card.html": _Contract(
+        builder=info_sources_routes._capture_policy_context,
+        empty_args=lambda: (
+            InfoSource(info_source_id=ULID(), url="https://example.com/probe", source_specs=[]),
+        ),
+        behaviour=frozenset({"capture_enabled", "policy", "policy_form"}),
+        optional={"swapped": _SWAPPED},
+    ),
     "rep_specs/_assignments.html": _Contract(
         builder=rep_specs_routes._assignments_context,
         empty_args=lambda: (

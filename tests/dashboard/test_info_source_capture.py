@@ -24,7 +24,13 @@ from co_core.pure.adapters.bus.streams import CONTENT_CAPTURE
 from sqlalchemy import func, select
 from ulid import ULID
 
-from src.core.models import AppUser, CaptureCommand, ChangesOutboxRow, InfoSource
+from src.core.models import (
+    AppUser,
+    CaptureCommand,
+    ChangesOutboxRow,
+    InfoSource,
+    SourceRevision,
+)
 from src.core.replication.permanent_store import permanent_blob_uri
 from src.core.services.capture import ENABLED_ENV
 from tests.dashboard.conftest import poll_sync_violations, read_flash
@@ -89,7 +95,9 @@ async def _count(session, column) -> int:
 
 
 def _card_html(text: str) -> str:
-    return text[text.index('id="capture-card"') :]
+    """The capture card alone: from its start tag to the Capture Policy card, if any."""
+    start = text.rindex("<div", 0, text.index('id="capture-card"'))
+    return text[start:].split('<div class="entity-card" id="capture-policy-card"')[0]
 
 
 # ---------------------------------------------------------------------------
@@ -132,8 +140,8 @@ async def test_the_card_offers_the_button(client, session, capture_on):
     assert f'hx-post="/dashboard/info-sources/{source.info_source_id}/capture-now"' in card
     assert 'hx-target="#capture-card"' in card
     assert "Capture now" in card
-    # The profile slice A sends, stated so the operator knows what they asked for.
-    assert "1280×800" in card
+    # The profile is the policy card's to state (slice C); this card states what
+    # each command sent.
     assert "every " not in card
     assert "disabled" not in card
 
@@ -192,7 +200,7 @@ async def test_requested_disables_the_button_and_polls(client, session, capture_
         assert f'hx-get="/dashboard/info-sources/{source.info_source_id}/capture"' in card
         assert "every " in card
         assert "disabled" in card
-        assert poll_sync_violations(r.text, "capture-card") == []
+        assert poll_sync_violations(card, "capture-card") == []
 
 
 @pytest.mark.asyncio
@@ -360,3 +368,80 @@ async def test_a_kept_capture_reads_kept_not_an_expiry(client, session, capture_
     # by its digest in the permanent store.
     assert permanent_blob_uri(DIGEST) in card
     assert "gs://x" not in card
+
+
+# ---------------------------------------------------------------------------
+# 6. Slice C: what the latest command sent, and why it was sent
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_card_states_what_the_command_sent(client, session, capture_on):
+    source = await _source(session)
+    session.add(
+        _command(
+            source,
+            viewport_width=390,
+            viewport_height=844,
+            full_page=False,
+            wait={"kind": "selector", "selector": "#main", "seconds": None},
+        )
+    )
+    await session.flush()
+
+    card = _card_html((await _card(client, source)).text)
+
+    assert "390×844" in card
+    assert "viewport only" in card
+    assert "#main" in card
+    assert "on demand" in card
+
+
+@pytest.mark.asyncio
+async def test_a_revision_capture_links_its_revision(client, session, capture_on):
+    source = await _source(session)
+    revision = SourceRevision(
+        info_source_id=source.info_source_id,
+        content_fingerprint="sha256:" + "e" * 64,
+        captured_at=datetime.now(UTC),
+    )
+    session.add(revision)
+    await session.flush()
+    session.add(_command(source, source_revision_id=revision.source_revision_id))
+    await session.flush()
+
+    card = _card_html((await _card(client, source)).text)
+
+    assert "new revision" in card
+    assert f'href="/dashboard/source-revisions/{revision.source_revision_id}"' in card
+
+
+@pytest.mark.asyncio
+async def test_a_reissue_states_its_attempt(client, session, capture_on):
+    source = await _source(session)
+    first = _command(source, state="abandoned", ago=timedelta(hours=2))
+    session.add(first)
+    await session.flush()
+    session.add(_command(source, reissue_of=first.command_id, attempt=2))
+    await session.flush()
+
+    card = _card_html((await _card(client, source)).text)
+
+    assert "Capture pending" in card
+    assert "attempt 2 of 3" in card
+
+
+@pytest.mark.asyncio
+async def test_capture_now_with_an_unusable_policy_writes_nothing_and_flashes(
+    client, session, capture_on
+):
+    source = await _source(session)
+    source.capture_policy = {"viewport": {"width": 0, "height": 800}}
+    await session.flush()
+
+    r = await _capture_now(client, source)
+
+    assert r.status_code == 200
+    assert read_flash(r)["showFlash"]["level"] == "error"
+    assert "no longer validates" in read_flash(r)["showFlash"]["body"]
+    assert await _count(session, CaptureCommand.command_id) == 0

@@ -1,10 +1,10 @@
 {#
-  Viewport Capture card (archiver#380 slice A) - InfoSource detail, on the
+  Viewport Capture card (archiver#380) - InfoSource detail, on the
   ARCHIVER_CAPTURE_ENABLED switch. Also the response of its own poll,
   GET /dashboard/info-sources/{id}/capture, and of the button's POST.
 
-  Requires `src`, `capture_enabled`, `capture`, `capture_profile` and
-  `capture_poll_seconds`, all from `_capture_context`, the card's one builder:
+  Requires `src`, `capture_enabled`, `capture` and `capture_poll_seconds`, all
+  from `_capture_context`, the card's one builder:
   a site that omits `capture` renders a card that never polls. `capture` is
   None for a source never captured, else `src/dashboard/capture_view.py`'s
   fields for the latest command. `swapped` is the caller's: true only for the
@@ -22,6 +22,10 @@
 
   Metadata only: the image itself waits on slice D (Archiver reads no stored
   bytes). A persisted capture (slice B) reads "Kept" in place of its expiry.
+  Slice C: a line under the state says what the command sent and why - on
+  demand, or on a new revision (linked; the capture renders the live page
+  around it) - and which attempt it is once the reaper has re-issued it. The
+  policy itself is the Capture Policy card's (_capture_policy_card.html).
 #}
 {% from "_macros.html" import copyable, open_button %}
 {% if capture_enabled %}
@@ -41,7 +45,7 @@
     </div>
   </div>
   <p class="text-sm text-muted" style="margin:0 0 var(--space-2);">
-    Replicator renders this URL headless at {{ capture_profile.width }}×{{ capture_profile.height }}{% if capture_profile.full_page %}, full page{% endif %}, and stores a PNG in its temporary store.
+    Replicator renders this URL in a headless browser and stores a PNG, kept permanently once stored.
   </p>
 
   {% if capture is none %}
@@ -99,6 +103,14 @@
   <p style="margin:0;">No answer <span class="text-sm text-muted">· requested {{ capture.requested_ago }}, abandoned
     after {{ capture.horizon_minutes }} min. Replicator may still be retrying, or the command was
     dead-lettered (<code>{{ capture.dlq }}</code>).</span></p>
+  {% endif %}
+
+  {% if capture is not none %}
+  <p class="text-sm text-muted" style="margin:var(--space-2) 0 0;">
+    Sent {{ capture.sent }}
+    · {% if capture.revision_id %}on a new revision, <a href="/dashboard/source-revisions/{{ capture.revision_id }}">{{ capture.revision_id }}</a>{% else %}on demand{% endif %}
+    {%- if capture.attempt > 1 %} · attempt {{ capture.attempt }} of {{ capture.max_attempts }}{% endif %}
+  </p>
   {% endif %}
 
   {% if swapped %}

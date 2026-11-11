@@ -61,6 +61,7 @@ which calls the same core functions without these routes.
 | Delete an InfoItem | `DELETE /info-items/{id}` | `delete_info_item(info_item_id)` |
 | Author a top-level InfoSource | `POST /info-sources` | `create_info_source(url, source_specs)` |
 | Update InfoSource specs | `PATCH /info-sources/{id}/source-specs` | `update_info_source_specs(info_source_id, source_specs)` |
+| Set or clear an InfoSource's capture policy | `PATCH /info-sources/{id}/capture-policy` | `set_capture_policy(info_source_id, policy)` (SDK 5.18.0, archiver#380) |
 | Get an InfoSource | `GET /info-sources/{id}` | `get_info_source(id)` |
 | List InfoSources (filter by URL or domain, paginated) | `GET /info-sources?url=…&domain_name=…&limit=&offset=` | `list_info_sources(url=None, domain_name=None, limit=None, offset=None)` |
 | Author a RepSpec | `POST /rep-specs` | `create_rep_spec(provider, name, document)` |
@@ -85,6 +86,14 @@ which calls the same core functions without these routes.
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
 
 `POST /info-sources` accepts `{url, source_specs}`. Multiple InfoSources at the same URL are valid. Returns 422 on invalid URL or spec validation failure.
+
+`PATCH /info-sources/{id}/capture-policy` accepts `{capture_policy}` (archiver#380 slice C):
+a `CapturePolicy` - `viewport {width, height}`, `full_page`, `wait`, `on_revision` - replaced
+whole, omitted keys taking their defaults, or `null` to clear it. `InfoSourceOut.capture_policy`
+returns the stored document. 422 on a value Replicator would refuse (a side outside `1..4096`, a
+`delay` over 30 s, a blank selector) or an unknown key, storing nothing; 404 for an unknown
+source. It sends no capture: `on_revision: true` captures each new revision from then on.
+Contract: [SCHEMA_SOURCES.md](SCHEMA_SOURCES.md).
 
 `PUT /info-items/{id}/primary-source` accepts `{info_source_id}` and **is the swap** (archiver#45).
 In one transaction it deactivates the current primary, binds the new one, emits

@@ -185,7 +185,8 @@ they decoded and took the foreign-event ack (#397).
 - **`terminal` first, then `reason` opaque (C2).** A terminal failure closes the
   command `failed` with `reason`, `detail` and `status_code` verbatim; a
   non-terminal one is recorded and the command stays open. `wait_timeout` is
-  terminal: re-issuing with another condition is a person's call in slice A.
+  terminal: re-issuing with another condition is a person's call (edit the
+  policy, capture again); a terminal failure is never re-issued automatically.
 - **`content_fingerprint` is an address, not a change signal**: two renders of
   an unchanged page usually differ. Nothing compares it.
 - **An unknown `command_id`** is ack + WARNING, never the DLQ.
@@ -211,12 +212,15 @@ at most `MAX_REISSUES` (3) times per digest. A duplicate persist
 is a no-op success on a content-addressed key, which is why re-issue is safe here
 and not for replication. Past the cap the digest waits for a re-observation.
 
-**Capture commands ride it too** (archiver#380 slice A): open past
-`capture.DEFAULT_REAP_HORIZON` (1 h; a render is bounded by Replicator's 120 s
-deadline and paced per host) they close `abandoned` with `no_fact_before_horizon`,
-and **nothing is re-issued**: every capture is a person's click, and the person
-clicks again. The capped automatic re-issue C2 asks for arrives with slice C's
-unattended triggers. The capture half also runs slice B's persist catch-up
+**Capture commands ride it too, and are re-issued** (archiver#380; C2): open
+past `capture.DEFAULT_REAP_HORIZON` (1 h; a render is bounded by Replicator's
+120 s deadline and paced per host) they close `abandoned` with
+`no_fact_before_horizon`, and in that transaction a fresh command re-sends what
+the silent one sent (`reissue_of`, `attempt + 1`), at most
+`capture.MAX_CAPTURE_REISSUES` (2) times, whatever the occasion - a click's too.
+Not while `ARCHIVER_CAPTURE_ENABLED` is off, nor once the source has a newer
+command. A duplicate render is only a second image, so re-issue is safe here as
+for persist. The capture half also runs slice B's persist catch-up
 (`persist_issuance.persist_missing_captures`) after the persist half has
 abandoned any silent persist: a stored capture still owed a persist gets one,
 capped per digest. Each family sweeps in its own transaction; a defect in one
