@@ -32,7 +32,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.core.capture_policy import CapturePolicy
+from src.core.capture_policy import DEFAULT_POLICY, CapturePolicy
 from src.core.models import (
     AppUser,
     CaptureCommand,
@@ -43,8 +43,6 @@ from src.core.models import (
 )
 from src.core.services import capture, persist_issuance
 from src.core.services.capture import (
-    DEFAULT_FULL_PAGE,
-    DEFAULT_VIEWPORT,
     ENABLED_ENV,
     MAX_CAPTURE_REISSUES,
     REASON_NO_FACT,
@@ -63,6 +61,8 @@ from src.core.services.capture import (
 from src.core.services.replication_writeback import UnknownCommandError
 
 T0 = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+DEFAULT_VIEWPORT = (DEFAULT_POLICY.viewport.width, DEFAULT_POLICY.viewport.height)
+DEFAULT_FULL_PAGE = DEFAULT_POLICY.full_page
 ON = {ENABLED_ENV: "1"}
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
@@ -196,9 +196,10 @@ async def test_a_request_writes_the_row_and_the_command_together(session):
 
 
 def test_the_default_profile():
-    """The one profile slice A sends; slice C's policy replaces it per source."""
+    """What a source with no policy sends: slice A's profile (slice C)."""
     assert DEFAULT_VIEWPORT == (1280, 800)
     assert DEFAULT_FULL_PAGE is True
+    assert DEFAULT_POLICY.wait is None
 
 
 @pytest.mark.asyncio

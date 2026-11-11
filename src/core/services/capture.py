@@ -8,7 +8,7 @@ The normative obligations are Replicator's ``content-capture-issuer-contract.md`
 
 **Three occasions, one shape.** Every command sends the source's capture policy
 (``info_sources.capture_policy``, ``src.core.capture_policy``; slice C), or
-``DEFAULT_POLICY`` where it has none:
+``capture_policy.DEFAULT_POLICY`` where it has none:
 
 - **On demand:** an operator clicks "Capture now" on InfoSource detail
   (``request_capture``).
@@ -83,7 +83,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.core.capture_policy import DEFAULT_POLICY, CapturePolicy, effective_policy
+from src.core.capture_policy import CapturePolicy, effective_policy
 from src.core.logging import get_logger
 from src.core.models import CaptureCommand, ChangesOutboxRow, InfoSource, SourceRevision
 from src.core.services.persist_issuance import issue_capture_persist
@@ -97,12 +97,6 @@ ENABLED_ENV = "ARCHIVER_CAPTURE_ENABLED"
 """Set only in ``deploy/archiver.service``; never in an env file."""
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
-
-# The profile a source with no policy sends (slice A's). A common desktop
-# viewport, the whole page: Replicator refuses (``too_large``) rather than clips
-# past 4096 x 32768 px.
-DEFAULT_VIEWPORT = (DEFAULT_POLICY.viewport.width, DEFAULT_POLICY.viewport.height)
-DEFAULT_FULL_PAGE = DEFAULT_POLICY.full_page
 
 # A render is bounded by Replicator's 120 s fetch deadline and paced per host;
 # a 5xx on the navigation is retried with no fact. An hour is many retries.
