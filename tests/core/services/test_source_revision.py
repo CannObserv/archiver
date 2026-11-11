@@ -835,3 +835,22 @@ async def test_a_revision_of_a_source_without_a_policy_is_not_captured(
 ):
     await record_revision(session, _facts(info_source.info_source_id))
     assert await _captures(session) == []
+
+
+@pytest.mark.asyncio
+async def test_a_capture_defect_does_not_cost_the_revision(
+    session, info_source, capture_on, monkeypatch
+):
+    """CR 2: the revision lands; the capture failure is logged, not raised."""
+    info_source.capture_policy = {"on_revision": True}
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("capture defect")
+
+    monkeypatch.setattr(capture, "_issue", _boom)
+
+    row, inserted = await record_revision(session, _facts(info_source.info_source_id))
+
+    assert inserted is True
+    assert await session.get(SourceRevision, row.source_revision_id) is not None
+    assert await _captures(session) == []

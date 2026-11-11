@@ -236,6 +236,28 @@ async def capture_for_revision(
     policy = _policy_or_none(source)
     if policy is None or not policy.on_revision:
         return None
+    # Contained (CR 2): a capture defect must not cost the revision, whose
+    # transaction this is - on the bus that would redeliver or dead-letter it.
+    try:
+        async with session.begin_nested():
+            command = await _capture_revision(session, source, revision, policy)
+            await session.flush()
+    except Exception:  # noqa: BLE001 - any defect is logged; the revision lands
+        logger.exception(
+            "Revision capture failed; the revision is recorded without one",
+            extra={
+                "info_source_id": str(source.info_source_id),
+                "source_revision_id": str(revision.source_revision_id),
+            },
+        )
+        return None
+    return command
+
+
+async def _capture_revision(
+    session: AsyncSession, source: InfoSource, revision: SourceRevision, policy: CapturePolicy
+) -> CaptureCommand | None:
+    """``capture_for_revision``'s write, under the source lock; ``None`` while one is open."""
     await _lock_source(session, source.info_source_id)
     latest = await latest_capture(session, source.info_source_id)
     if latest is not None and latest.state == STATE_REQUESTED:
@@ -500,10 +522,27 @@ async def reap_open_captures(
             },
         )
         await session.flush()
-        if await _reissue(session, command, environ) is not None:
+        if await _contained_reissue(session, command, environ) is not None:
             reissued += 1
     await session.flush()
     return ReapResult(abandoned=len(stale), reissued=reissued)
+
+
+async def _contained_reissue(
+    session: AsyncSession, command: CaptureCommand, environ: Mapping[str, str]
+) -> CaptureCommand | None:
+    """``_reissue`` in a savepoint: a defect is logged and the abandon stands (CR 2)."""
+    try:
+        async with session.begin_nested():
+            reissued = await _reissue(session, command, environ)
+            await session.flush()
+    except Exception:  # noqa: BLE001 - any defect is logged; the abandon stands
+        logger.exception(
+            "Capture re-issue failed; the command stays abandoned",
+            extra={"command_id": command.command_id},
+        )
+        return None
+    return reissued
 
 
 async def _reissue(

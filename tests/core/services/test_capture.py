@@ -797,3 +797,21 @@ async def test_set_capture_policy_none_clears_it(session):
 async def test_set_capture_policy_on_an_unknown_source_raises(session):
     with pytest.raises(LookupError):
         await set_capture_policy(session, ULID(), None)
+
+
+@pytest.mark.asyncio
+async def test_a_reissue_defect_keeps_the_abandon(session, monkeypatch):
+    """CR 2: a failing re-issue must not roll back the pass's abandons."""
+    source = await _source(session)
+    command = await _issued(session, source)
+    await _silent(session, command)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("reissue defect")
+
+    monkeypatch.setattr(capture, "_issue", _boom)
+
+    result = await reap_open_captures(session, horizon=timedelta(hours=1), environ=ON)
+
+    assert (result.abandoned, result.reissued) == (1, 0)
+    assert command.state == "abandoned"

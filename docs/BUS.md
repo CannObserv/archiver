@@ -390,7 +390,8 @@ revision's transaction, never on a redelivery; the row names the revision); and 
   source's `capture_policy` - viewport, `full_page`, `wait` - or, with none, the default:
   1280×800, `full_page: true`, `wait: null` (after `load`). No headers, no credential. A
   stored policy that no longer validates sends nothing: Capture now is refused, a revision
-  is not captured (WARNING), and the revision itself still lands.
+  is not captured (WARNING), and the revision itself still lands. So does any capture defect
+  on the two unattended paths (a SAVEPOINT; ERROR): the revision lands, the abandon stands.
 - **Re-issue, capped (C2):** the reaper abandons a command silent past 1 h and, in that
   transaction, re-sends exactly what it sent under a fresh `command_id` (`reissue_of`,
   `attempt + 1`), up to `capture.MAX_CAPTURE_REISSUES` (2) times, for every occasion. Not
