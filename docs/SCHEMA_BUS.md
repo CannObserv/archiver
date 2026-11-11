@@ -42,7 +42,10 @@ keeps the registry tables; identifiers are verbatim there and here.
 - **`PersistCommand`** (`persist_commands`) — one `content.persist` occasion (archiver#276);
   `ReplicationCommand`'s shape. States `requested` → `persisted` | `failed` | `abandoned`. The
   only link from an outcome to the registry: persist facts carry no domain ids. A success stamps
-  every revision with that digest, not just `source_revision_id`. Semantics:
+  every revision with that digest, not just `source_revision_id`, and every capture with it.
+  **The occasion is a revision or a capture, exactly one** (archiver#380 slice B):
+  `source_revision_id` (FK `RESTRICT`) or `capture_command_id` (FK `capture_commands`,
+  `CASCADE`), held by `ck_persist_commands_one_occasion`. Semantics:
   [BUS_CONSUMERS.md](BUS_CONSUMERS.md). **At most one `requested` command per
   `content_fingerprint`** is the issuer's rule (`persist_issuance`), enforced in code rather than
   by an index: `abandoned` rows accumulate per digest and count against the reaper's re-issue cap.
@@ -99,7 +102,9 @@ keeps the registry tables; identifiers are verbatim there and here.
   address only), `blob_uri`, `media_type`, `size_bytes`, `image_width`/`image_height` (the
   stored PNG, not the viewport), `final_url`, `captured_at`, `blob_expires_at` (the temp
   store's horizon; `NULL` = unknown). Failure: `reason` (opaque), `detail`, `status_code`,
-  `terminal`. `last_fact_at` is the failure ordering high-water mark. **At most one
+  `terminal`. `last_fact_at` is the failure ordering high-water mark. `persisted_at` (slice B)
+  is `source_revisions.persisted_at`'s rule: the minimum `blob_persisted` time for the digest,
+  stamped by any persist of those bytes; set, `blob_expires_at` no longer binds. **At most one
   `requested` row per source** is the issuer's rule (`capture.request_capture`, under the
   source row lock), not an index. Outcome semantics: [BUS_CONSUMERS.md](BUS_CONSUMERS.md).
 - **`BusTailCursor`** (`bus_tail_cursors`) — resume point per tailed stream (archiver#151). A

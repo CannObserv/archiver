@@ -33,6 +33,8 @@ class PersistCommand(Base):
     every revision whose raw bytes hash to it. ``source_revision_id`` here records
     which revision *occasioned* the command, not who owns the object; a success
     stamps ``persisted_at`` on every revision carrying ``content_fingerprint``.
+    A viewport capture can occasion one too (``capture_command_id``, archiver#380
+    slice B); a success stamps every capture carrying the digest the same way.
 
     ``content_fingerprint`` is the **raw-bytes** sha256, bare hex, the wire name
     ``ContentPersistCommand`` uses. It is ``source_revisions.blob_fingerprint``,
@@ -42,11 +44,19 @@ class PersistCommand(Base):
     __tablename__ = "persist_commands"
 
     command_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    source_revision_id: Mapped[ULID] = mapped_column(
+    source_revision_id: Mapped[ULID | None] = mapped_column(
         ULIDType(),
         ForeignKey("information.source_revisions.source_revision_id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
+    capture_command_id: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("information.capture_commands.command_id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    """The capture that occasioned the command (archiver#380 slice B). Exactly one
+    of this and ``source_revision_id`` is set (``ck_persist_commands_one_occasion``).
+    Cascades with the capture, which cascades with its source."""
 
     # What was sent.
     content_fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
@@ -88,7 +98,12 @@ class PersistCommand(Base):
             "issued_at",
             postgresql_where=text("closed_at IS NULL AND state = 'requested'"),
         ),
+        CheckConstraint(
+            "num_nonnulls(source_revision_id, capture_command_id) = 1",
+            name="ck_persist_commands_one_occasion",
+        ),
         Index("ix_persist_commands_revision", "source_revision_id"),
+        Index("ix_persist_commands_capture", "capture_command_id"),
         # "Is a persist for these bytes already open?", the issuer's re-arm check
         # (archiver#276 decision 3), which lands with persist issuance.
         Index("ix_persist_commands_fingerprint", "content_fingerprint"),

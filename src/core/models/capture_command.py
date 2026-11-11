@@ -92,6 +92,11 @@ class CaptureCommand(Base):
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     blob_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     """The temp store's horizon; ``None`` = unknown. A persist must precede it."""
+    persisted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    """The minimum ``blob_persisted`` ``occurred_at`` for ``content_fingerprint``
+    (archiver#380 slice B), ``source_revisions.persisted_at``'s rule: set, the
+    image is in Replicator's permanent store and ``blob_expires_at`` no longer
+    binds."""
 
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_fact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -111,5 +116,7 @@ class CaptureCommand(Base):
         ),
         # "The source's latest command": the block's one read per render.
         Index("ix_capture_commands_source_issued", "info_source_id", "issued_at"),
+        # A persist success stamps every capture carrying its digest (slice B).
+        Index("ix_capture_commands_fingerprint", "content_fingerprint"),
         {"schema": "information"},
     )

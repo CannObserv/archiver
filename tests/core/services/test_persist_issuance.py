@@ -17,20 +17,32 @@ What is pinned here:
   is why re-issue is safe here and is not for replicate.
 """
 
+import logging
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from co_core.pure.adapters.bus.streams import CONTENT_PERSIST
+from co_core.pure.models.changes import ContentPersistCommand
 from sqlalchemy import func, select
+from ulid import ULID
 
-from src.core.models import ChangesOutboxRow, InfoSource, PersistCommand, SourceRevision
+from src.core.models import (
+    CaptureCommand,
+    ChangesOutboxRow,
+    InfoSource,
+    PersistCommand,
+    SourceRevision,
+)
 from src.core.replication.permanent_store import PERMANENT_BUCKET, permanent_blob_uri
 from src.core.services import persist_issuance
 from src.core.services.persist_issuance import (
     MAX_REISSUES,
     REASON_NO_FACT,
     issuance_enabled,
+    issue_capture_persist,
     issue_persist,
+    persist_missing_captures,
     reap_open_persists,
 )
 from src.core.services.persist_writeback import (
@@ -359,3 +371,246 @@ async def test_a_persisted_command_is_never_reaped(session, enabled):
 def test_the_permanent_uri_is_derived_from_the_digest():
     assert PERMANENT_BUCKET == "co-gcs-replicator"
     assert permanent_blob_uri(DIGEST) == f"gs://co-gcs-replicator/blobs/{DIGEST}.bin"
+
+
+# --- a stored capture's persist (archiver#380 slice B, capture contract C3) ---
+
+CAPTURE_DIGEST = "c" * 64
+CAPTURE_URI = f"gs://co-gcs-blobs/blobs/{CAPTURE_DIGEST}.bin"
+
+
+async def _stored_capture(
+    session,
+    *,
+    digest: str = CAPTURE_DIGEST,
+    url: str = "https://example.com/capture-persist",
+    expires_in: timedelta | None = timedelta(days=7),
+    **overrides,
+) -> CaptureCommand:
+    source = InfoSource(url=url, source_specs=[])
+    session.add(source)
+    await session.flush()
+    values = dict(
+        command_id=str(ULID()),
+        info_source_id=source.info_source_id,
+        url=url,
+        viewport_width=1280,
+        viewport_height=800,
+        full_page=True,
+        state="stored",
+        content_fingerprint=digest,
+        blob_uri=f"gs://co-gcs-blobs/blobs/{digest}.bin",
+        media_type="image/png",
+        blob_expires_at=None if expires_in is None else datetime.now(UTC) + expires_in,
+    )
+    values.update(overrides)
+    capture = CaptureCommand(**values)
+    session.add(capture)
+    await session.flush()
+    return capture
+
+
+@pytest.mark.asyncio
+async def test_a_stored_capture_gets_one_persist_with_the_facts_values(session, enabled):
+    capture = await _stored_capture(session)
+
+    command = await issue_capture_persist(session, capture)
+    await session.flush()
+
+    assert command is not None
+    assert command.capture_command_id == capture.command_id
+    assert command.source_revision_id is None
+    assert command.state == STATE_REQUESTED
+    [row] = await _persist_outbox(session)
+    wire = ContentPersistCommand.model_validate(row.payload)
+    # C3: the fact's three values, verbatim.
+    assert wire.command_id == command.command_id
+    assert wire.content_fingerprint == CAPTURE_DIGEST
+    assert wire.blob_uri == CAPTURE_URI
+    assert wire.media_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_issued_for_a_capture_while_switched_off(session, monkeypatch):
+    monkeypatch.delenv(persist_issuance.ISSUANCE_ENV, raising=False)
+    capture = await _stored_capture(session)
+    assert await issue_capture_persist(session, capture) is None
+    assert await _persist_outbox(session) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"state": "requested"},
+        {"state": "failed"},
+        {"content_fingerprint": None},
+        {"blob_uri": None},
+        {"persisted_at": datetime(2026, 11, 11, tzinfo=UTC)},
+    ],
+)
+async def test_an_ineligible_capture_is_not_issued(session, enabled, overrides):
+    capture = await _stored_capture(session, **overrides)
+    assert await issue_capture_persist(session, capture) is None
+    assert await _persist_outbox(session) == []
+
+
+@pytest.mark.asyncio
+async def test_an_expired_capture_is_not_issued(session, enabled):
+    """Past blob_expires_at the temp bytes may be gone; a persist would only fail."""
+    capture = await _stored_capture(session, expires_in=-timedelta(minutes=1))
+    assert await issue_capture_persist(session, capture) is None
+    assert await _persist_outbox(session) == []
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_horizon_is_issued(session, enabled):
+    capture = await _stored_capture(session, expires_in=None)
+    assert await issue_capture_persist(session, capture) is not None
+
+
+@pytest.mark.asyncio
+async def test_an_open_persist_for_the_digest_suppresses_a_capture_persist(session, enabled):
+    first = await _stored_capture(session)
+    twin = await _stored_capture(session, url="https://example.com/capture-twin")
+    assert await issue_capture_persist(session, first) is not None
+    await session.flush()
+    assert await issue_capture_persist(session, twin) is None
+    assert len(await _persist_outbox(session)) == 1
+
+
+@pytest.mark.asyncio
+async def test_bytes_already_kept_are_adopted_for_a_capture(session, enabled):
+    kept_at = datetime(2026, 11, 1, tzinfo=UTC)
+    await _stored_capture(session, persisted_at=kept_at)
+    twin = await _stored_capture(session, url="https://example.com/capture-twin")
+
+    assert await issue_capture_persist(session, twin) is None
+    assert twin.persisted_at == kept_at
+    assert await _persist_outbox(session) == []
+
+
+# --- the capture catch-up: lost, failed or never-issued persists ---
+
+
+@pytest.mark.asyncio
+async def test_the_catch_up_issues_for_a_stored_unpersisted_capture(session, enabled):
+    """A capture stored while issuance was off, or before slice B shipped."""
+    capture = await _stored_capture(session)
+
+    assert await persist_missing_captures(session) == 1
+    [command] = (await session.execute(select(PersistCommand))).scalars().all()
+    assert command.capture_command_id == capture.command_id
+
+
+@pytest.mark.asyncio
+async def test_the_catch_up_reissues_after_an_abandon_or_a_failure(session, enabled):
+    capture = await _stored_capture(session)
+    first = await issue_capture_persist(session, capture)
+    first.state = STATE_FAILED
+    first.closed_at = datetime.now(UTC)
+    await session.flush()
+
+    assert await persist_missing_captures(session) == 1
+    assert await _count(session, PersistCommand) == 2
+
+
+@pytest.mark.asyncio
+async def test_the_catch_up_skips_an_open_persist(session, enabled):
+    capture = await _stored_capture(session)
+    await issue_capture_persist(session, capture)
+    await session.flush()
+    assert await persist_missing_captures(session) == 0
+
+
+@pytest.mark.asyncio
+async def test_the_catch_up_stops_at_the_cap(session, enabled):
+    capture = await _stored_capture(session)
+    for _ in range(1 + MAX_REISSUES):
+        command = await issue_capture_persist(session, capture)
+        command.state = STATE_ABANDONED
+        command.closed_at = datetime.now(UTC)
+        await session.flush()
+
+    assert await persist_missing_captures(session) == 0
+
+
+@pytest.mark.asyncio
+async def test_the_catch_up_skips_persisted_expired_and_unstored(session, enabled):
+    await _stored_capture(session, persisted_at=datetime(2026, 11, 1, tzinfo=UTC))
+    await _stored_capture(
+        session, digest="d" * 64, url="https://e.com/1", expires_in=-timedelta(minutes=1)
+    )
+    await _stored_capture(session, digest="e" * 64, url="https://e.com/2", state="requested")
+    assert await persist_missing_captures(session) == 0
+
+
+@pytest.mark.asyncio
+async def test_the_catch_up_issues_once_per_digest(session, enabled):
+    await _stored_capture(session)
+    await _stored_capture(session, url="https://example.com/capture-twin")
+    assert await persist_missing_captures(session) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_catch_up_issues_nothing_while_switched_off(session, monkeypatch):
+    monkeypatch.delenv(persist_issuance.ISSUANCE_ENV, raising=False)
+    await _stored_capture(session)
+    assert await persist_missing_captures(session) == 0
+
+
+@pytest.mark.asyncio
+async def test_the_reaper_does_not_reissue_a_capture_persist_from_a_revision(session, enabled):
+    """reap_open_persists abandons a silent capture persist; its re-issue is the
+    catch-up's, which reads the capture's own blob_uri."""
+    capture = await _stored_capture(session)
+    command = await issue_capture_persist(session, capture)
+    command.issued_at = datetime.now(UTC) - HORIZON - timedelta(minutes=1)
+    await session.flush()
+
+    abandoned, reissued = await reap_open_persists(session, horizon=HORIZON)
+
+    assert (abandoned, reissued) == (1, 0)
+    assert command.state == STATE_ABANDONED
+
+
+async def _capped(session, *, closed_ago: timedelta) -> CaptureCommand:
+    capture = await _stored_capture(session)
+    for _ in range(1 + MAX_REISSUES):
+        command = await issue_capture_persist(session, capture)
+        command.state = STATE_FAILED
+        command.closed_at = datetime.now(UTC) - closed_ago
+        await session.flush()
+    return capture
+
+
+@pytest.mark.asyncio
+async def test_the_cap_warns_on_the_sweep_after_the_last_command_closed(session, enabled):
+    """CR 12: one WARNING when the cap is reached, not one per sweep until expiry."""
+    await _capped(session, closed_ago=timedelta(minutes=2))
+    with patch.object(persist_issuance.logger, "log") as log:
+        await persist_missing_captures(session)
+    assert [(c.args[0], c.args[1]) for c in log.call_args_list] == [
+        (logging.WARNING, "Capture persist cap reached; the capture expires with the temp store")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_cap_is_quiet_on_later_sweeps(session, enabled):
+    await _capped(session, closed_ago=timedelta(hours=2))
+    with patch.object(persist_issuance.logger, "log") as log:
+        assert await persist_missing_captures(session) == 0
+    assert [c.args[0] for c in log.call_args_list] == [logging.DEBUG]
+
+
+@pytest.mark.asyncio
+async def test_a_revision_adopts_bytes_a_capture_already_kept(session, monkeypatch):
+    """CR 14: the digest owns the object, so adoption reads captures too."""
+    monkeypatch.setenv(persist_issuance.ISSUANCE_ENV, "1")
+    kept_at = datetime(2026, 11, 1, tzinfo=UTC)
+    await _stored_capture(session, digest=DIGEST, persisted_at=kept_at)
+    revision = await _revision(session)
+
+    assert await issue_persist(session, revision) is None
+    assert revision.persisted_at == kept_at
+    assert await _persist_outbox(session) == []

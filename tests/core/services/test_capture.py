@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from co_core.pure.adapters.bus.streams import CONTENT_CAPTURE
+from co_core.pure.adapters.bus.streams import CONTENT_CAPTURE, CONTENT_PERSIST
 from co_core.pure.models.changes import (
     CaptureFailedEvent,
     CaptureStoredEvent,
@@ -29,8 +29,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.core.models import AppUser, CaptureCommand, ChangesOutboxRow, InfoSource
-from src.core.services import capture
+from src.core.models import (
+    AppUser,
+    CaptureCommand,
+    ChangesOutboxRow,
+    InfoSource,
+    PersistCommand,
+)
+from src.core.services import capture, persist_issuance
 from src.core.services.capture import (
     DEFAULT_FULL_PAGE,
     DEFAULT_VIEWPORT,
@@ -463,3 +469,72 @@ async def test_the_reaper_leaves_closed_commands_alone(session):
 
 def test_the_default_horizon():
     assert capture.DEFAULT_REAP_HORIZON == timedelta(hours=1)
+
+
+# --- 8. keeping it: capture_stored issues content.persist (slice B, C3) ---
+
+
+@pytest.fixture
+def persist_on(monkeypatch):
+    monkeypatch.setenv(persist_issuance.ISSUANCE_ENV, "1")
+
+
+async def _persists(session) -> list[PersistCommand]:
+    return list((await session.execute(select(PersistCommand))).scalars().all())
+
+
+@pytest.mark.asyncio
+async def test_a_stored_capture_is_persisted_in_the_same_transaction(session, persist_on):
+    source = await _source(session)
+    command = await _issued(session, source)
+
+    await apply_capture_stored(session, _stored(command))
+    await session.flush()
+
+    [persist] = await _persists(session)
+    assert persist.capture_command_id == command.command_id
+    assert persist.content_fingerprint == DIGEST_A
+    assert persist.blob_uri == f"gs://co-gcs-blobs/blobs/{DIGEST_A}.bin"
+    assert persist.media_type == "image/png"
+    [row] = (
+        (
+            await session.execute(
+                select(ChangesOutboxRow).where(ChangesOutboxRow.topic == CONTENT_PERSIST)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert row.payload["command_id"] == persist.command_id
+
+
+@pytest.mark.asyncio
+async def test_a_redelivered_success_issues_no_second_persist(session, persist_on):
+    source = await _source(session)
+    command = await _issued(session, source)
+    await apply_capture_stored(session, _stored(command))
+    await session.flush()
+    persist = (await _persists(session))[0]
+    persist.state = "persisted"
+    persist.closed_at = datetime.now(UTC)
+    await session.flush()
+
+    await apply_capture_stored(
+        session, _stored(command, digest=DIGEST_B, at=T0 + timedelta(minutes=10))
+    )
+    await session.flush()
+
+    assert len(await _persists(session)) == 1
+
+
+@pytest.mark.asyncio
+async def test_no_persist_while_persist_issuance_is_off(session, monkeypatch):
+    monkeypatch.delenv(persist_issuance.ISSUANCE_ENV, raising=False)
+    source = await _source(session)
+    command = await _issued(session, source)
+
+    await apply_capture_stored(session, _stored(command))
+    await session.flush()
+
+    assert command.state == "stored"
+    assert await _persists(session) == []

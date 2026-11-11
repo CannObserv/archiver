@@ -20,7 +20,10 @@ is an outbox row, so the publisher still does the publishing.
 **Capture commands ride it too** (archiver#380 slice A), past their own
 one-hour horizon (``capture.DEFAULT_REAP_HORIZON``). They are abandoned and
 not re-issued: in slice A every capture is a person's click, and the person
-re-issues.
+re-issues. The same half runs slice B's catch-up
+(``persist_issuance.persist_missing_captures``): a stored capture still owed a
+``content.persist`` gets one, after the persist half above has abandoned any
+silent one.
 """
 
 from __future__ import annotations
@@ -125,6 +128,21 @@ async def _sweep_captures(
         logger.warning(
             "Abandoned silent capture commands past the horizon",
             extra={"abandoned": abandoned},
+        )
+    # Slice B's catch-up, in its own transaction: a defect here must not roll
+    # back the abandons above (CR 11).
+    try:
+        async with session_factory() as session:
+            persisted = await persist_issuance.persist_missing_captures(session)
+            if persisted:
+                await session.commit()
+    except Exception:
+        logger.exception("Capture persist catch-up failed; capture abandons unaffected")
+        return
+    if persisted:
+        logger.info(
+            "Issued content.persist for captures still owed one",
+            extra={"issued": persisted},
         )
 
 

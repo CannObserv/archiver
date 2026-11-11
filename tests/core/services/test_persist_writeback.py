@@ -16,8 +16,9 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
+from ulid import ULID
 
-from src.core.models import InfoSource, PersistCommand, SourceRevision
+from src.core.models import CaptureCommand, InfoSource, PersistCommand, SourceRevision
 from src.core.services import persist_writeback
 from src.core.services.persist_writeback import (
     REASON_DIGEST_MISMATCH,
@@ -411,3 +412,120 @@ async def test_mismatched_success_after_a_real_one_changes_nothing(session, revi
     assert command.state == STATE_PERSISTED
     assert command.reason is None
     assert revision.persisted_at == OCCURRED_AT
+
+
+# --- a capture's persist (archiver#380 slice B) ---
+
+
+async def _capture(session, *, digest: str = DIGEST, url: str = "https://example.com/cap"):
+    source = InfoSource(url=url, source_specs=[])
+    session.add(source)
+    await session.flush()
+    capture = CaptureCommand(
+        command_id=str(ULID()),
+        info_source_id=source.info_source_id,
+        url=url,
+        viewport_width=1280,
+        viewport_height=800,
+        full_page=True,
+        state="stored",
+        content_fingerprint=digest,
+        blob_uri=f"gs://co-gcs-blobs/blobs/{digest}.bin",
+        media_type="image/png",
+    )
+    session.add(capture)
+    await session.flush()
+    return capture
+
+
+async def _capture_persist(session, capture, *, command_id: str = "pcmd-cap") -> PersistCommand:
+    command = PersistCommand(
+        command_id=command_id,
+        capture_command_id=capture.command_id,
+        content_fingerprint=capture.content_fingerprint,
+        blob_uri=capture.blob_uri,
+        media_type="image/png",
+        state=STATE_REQUESTED,
+    )
+    session.add(command)
+    await session.flush()
+    return command
+
+
+@pytest.mark.asyncio
+async def test_a_capture_persist_success_stamps_the_capture(session):
+    capture = await _capture(session)
+    other = await _capture(session, digest=OTHER_DIGEST, url="https://example.com/cap-other")
+    command = await _capture_persist(session, capture)
+
+    await apply_persisted(
+        session,
+        command_id=command.command_id,
+        content_fingerprint=DIGEST,
+        size_bytes=451243,
+        occurred_at=OCCURRED_AT,
+    )
+
+    await session.refresh(capture)
+    await session.refresh(other)
+    assert command.state == STATE_PERSISTED
+    assert capture.persisted_at == OCCURRED_AT
+    assert other.persisted_at is None
+
+
+@pytest.mark.asyncio
+async def test_the_digest_owns_the_object_across_captures_and_revisions(session, revision):
+    """Identical bytes are one stored object, whoever occasioned the persist."""
+    capture = await _capture(session)
+    twin = await _capture(session, url="https://example.com/cap-twin")
+    command = await _capture_persist(session, capture)
+
+    await apply_persisted(
+        session,
+        command_id=command.command_id,
+        content_fingerprint=DIGEST,
+        size_bytes=1,
+        occurred_at=OCCURRED_AT,
+    )
+
+    for row in (capture, twin, revision):
+        await session.refresh(row)
+        assert row.persisted_at == OCCURRED_AT
+
+
+@pytest.mark.asyncio
+async def test_a_capture_persisted_at_is_a_minimum(session):
+    capture = await _capture(session)
+    command = await _capture_persist(session, capture)
+    later = OCCURRED_AT + timedelta(minutes=5)
+
+    for at in (later, OCCURRED_AT, later):
+        await apply_persisted(
+            session,
+            command_id=command.command_id,
+            content_fingerprint=DIGEST,
+            size_bytes=1,
+            occurred_at=at,
+        )
+
+    await session.refresh(capture)
+    assert capture.persisted_at == OCCURRED_AT
+
+
+@pytest.mark.asyncio
+async def test_a_capture_persist_mismatch_stamps_nothing(session):
+    capture = await _capture(session)
+    command = await _capture_persist(session, capture)
+
+    await apply_persisted(
+        session,
+        command_id=command.command_id,
+        content_fingerprint=OTHER_DIGEST,
+        size_bytes=1,
+        occurred_at=OCCURRED_AT,
+    )
+
+    await session.refresh(capture)
+    assert command.state == STATE_FAILED
+    assert command.reason == REASON_DIGEST_MISMATCH
+    assert capture.persisted_at is None

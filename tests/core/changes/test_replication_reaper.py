@@ -354,3 +354,40 @@ async def test_a_failing_capture_sweep_does_not_cost_replication_its_reaping(
 
     assert reaped == 1
     assert await _state(session_factory, command_id) == STATE_ABANDONED
+
+
+@pytest.mark.asyncio
+async def test_the_capture_sweep_persists_a_stored_capture_owed_one(session_factory, monkeypatch):
+    """Slice B's catch-up: e.g. a capture stored before slice B, or a lost persist."""
+    monkeypatch.setenv(persist_issuance.ISSUANCE_ENV, "1")
+    command_id = await _open_capture(session_factory, age=timedelta(minutes=5))
+    async with session_factory() as s:
+        row = await s.get(CaptureCommand, command_id)
+        row.state = capture.STATE_STORED
+        row.content_fingerprint = "e" * 64
+        row.blob_uri = "gs://co-gcs-blobs/blobs/" + "e" * 64 + ".bin"
+        row.media_type = "image/png"
+        row.blob_expires_at = datetime.now(UTC) + timedelta(days=6)
+        await s.commit()
+
+    await replication_reaper.sweep_once(session_factory, horizon=timedelta(hours=6))
+
+    async with session_factory() as s:
+        persists = (await s.execute(select(PersistCommand))).scalars().all()
+    assert [p.capture_command_id for p in persists] == [command_id]
+
+
+@pytest.mark.asyncio
+async def test_a_failing_catch_up_does_not_cost_the_capture_abandon(session_factory, monkeypatch):
+    """CR 11: abandon and catch-up commit separately; a catch-up defect is contained."""
+    command_id = await _open_capture(session_factory, age=timedelta(hours=2))
+
+    async def _boom(*_args, **_kwargs):
+        raise RuntimeError("catch-up defect")
+
+    monkeypatch.setattr(persist_issuance, "persist_missing_captures", _boom)
+
+    await replication_reaper.sweep_once(session_factory, horizon=timedelta(hours=6))
+
+    state, reason, _ = await _capture_state(session_factory, command_id)
+    assert (state, reason) == (capture.STATE_ABANDONED, capture.REASON_NO_FACT)

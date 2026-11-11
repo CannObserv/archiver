@@ -85,6 +85,7 @@ async def test_a_new_command_records_what_was_sent_and_nothing_else(session):
         "blob_expires_at",
         "closed_at",
         "last_fact_at",
+        "persisted_at",
     ):
         assert getattr(got, column) is None, column
 

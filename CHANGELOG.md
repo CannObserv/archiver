@@ -18,6 +18,17 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.45.0 (2026-11-11)
+
+[service] **Viewport capture, slice B: captures are kept with `content.persist`** (archiver#380; Replicator's capture contract C3). Migration `bbeca5a6f31e`. SDK unchanged (5.17.0): no API route or schema changes. Gated by the existing `ARCHIVER_PERSIST_ISSUANCE`, which has been on in production since #283.
+
+- **`persist_commands`**: `source_revision_id` becomes nullable beside a new `capture_command_id` (FK `capture_commands`, `CASCADE`). The CHECK `ck_persist_commands_one_occasion` requires exactly one. Existing rows all carry a revision; expand-only.
+- **`capture_commands.persisted_at`**: the minimum `blob_persisted` time for the capture's digest, `source_revisions.persisted_at`'s rule. Indexed by `content_fingerprint`.
+- **Issuance**: applying `capture_stored` issues one persist in the same transaction, with the fact's `content_fingerprint`, `blob_uri` and `media_type` verbatim. It follows the same one-open-per-digest rule and adopts bytes already kept. Nothing is issued past `blob_expires_at`.
+- **Catch-up**: the reaper's timer issues for every stored, unpersisted, unexpired capture with no open persist for its digest, capped at `1 + MAX_REISSUES` commands per digest. This covers a lost or failed persist and every capture stored before this release.
+- **Writeback**: a `blob_persisted` success stamps `persisted_at` on every revision *and* every capture carrying its digest.
+- **Dashboard**: a kept capture's card reads *Kept permanently, since …* in place of its expiry.
+
 ## v4.44.0 (2026-11-10)
 
 [service] **Viewport capture, slice A: Capture now via `content.capture`** (archiver#380; its flip unblocks the Archiver half of CannObserv/broker#116). Migration `b10b1ce04a49` adds the table `information.capture_commands`. SDK unchanged (5.17.0): no API route or schema is added (dashboard only). **Ships dark:** `ARCHIVER_CAPTURE_ENABLED` is commented out in `deploy/archiver.service` until its flip, so there is no card, both routes 404 and nothing is enqueued.

@@ -8,7 +8,9 @@ come from content addressing:
 every revision whose raw bytes hash to it. The command row is how a fact is
 recognised as ours; the digest is what a success is *about*. So a success stamps
 ``persisted_at`` on every revision whose ``blob_fingerprint`` matches, whichever
-revision occasioned the command.
+revision occasioned the command, and on every viewport capture whose
+``content_fingerprint`` matches (archiver#380 slice B): a capture can occasion a
+persist too, and identical bytes are one stored object.
 
 **``persisted_at`` is a minimum.** ``occurred_at`` is the fact's publish time, an
 upper bound on the write. A redelivery that finds the object present re-emits
@@ -32,7 +34,7 @@ from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.logging import get_logger
-from src.core.models import PersistCommand, SourceRevision
+from src.core.models import CaptureCommand, PersistCommand, SourceRevision
 from src.core.services.replication_writeback import UnknownCommandError
 
 logger = get_logger(__name__)
@@ -83,17 +85,21 @@ async def apply_persisted(
         return command
 
     # Every success is evidence about the digest, even one that is stale for the
-    # command's own ordering: it only ever lowers the minimum.
-    await session.execute(
-        update(SourceRevision)
-        .where(SourceRevision.blob_fingerprint == content_fingerprint)
-        .values(
-            persisted_at=func.least(
-                func.coalesce(SourceRevision.persisted_at, occurred_at), occurred_at
+    # command's own ordering: it only ever lowers the minimum. The digest owns the
+    # object, so revisions and captures (archiver#380 slice B) carrying it are
+    # stamped alike, whichever of them occasioned the command.
+    for model, digest_column in (
+        (SourceRevision, SourceRevision.blob_fingerprint),
+        (CaptureCommand, CaptureCommand.content_fingerprint),
+    ):
+        await session.execute(
+            update(model)
+            .where(digest_column == content_fingerprint)
+            .values(
+                persisted_at=func.least(func.coalesce(model.persisted_at, occurred_at), occurred_at)
             )
+            .execution_options(synchronize_session="fetch")
         )
-        .execution_options(synchronize_session="fetch")
-    )
 
     # A success wins whatever its arrival order: the object exists once any fact
     # says so, and a failure stamped later cannot unmake it. The mirror of
@@ -108,7 +114,8 @@ async def apply_persisted(
         extra={
             "command_id": command_id,
             "content_fingerprint": content_fingerprint,
-            "source_revision_id": str(command.source_revision_id),
+            "source_revision_id": _str_or_none(command.source_revision_id),
+            "capture_command_id": command.capture_command_id,
             "size_bytes": size_bytes,
             "occurred_at": occurred_at.isoformat(),
         },
@@ -170,6 +177,10 @@ async def apply_persist_failed(
         },
     )
     return command
+
+
+def _str_or_none(value: object) -> str | None:
+    return None if value is None else str(value)
 
 
 async def _load(session: AsyncSession, command_id: str) -> PersistCommand:

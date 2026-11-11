@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
 from src.core.models import CaptureCommand
+from src.core.replication.permanent_store import permanent_blob_uri
 from src.core.services.capture import STATE_REQUESTED
 from src.dashboard.watch_panel import format_age
 
@@ -35,8 +36,10 @@ class CaptureView(TypedDict):
     content_fingerprint: str | None
     final_url: str | None
     blob_uri: str | None
+    kept: bool
     expires_at: datetime | None
     expired: bool
+    persisted_at: datetime | None
     horizon_minutes: int
     dlq: str
 
@@ -63,9 +66,23 @@ def capture_view(
         size_bytes=command.size_bytes,
         content_fingerprint=command.content_fingerprint,
         final_url=command.final_url,
-        blob_uri=command.blob_uri,
+        # Once kept, the temp URI goes with the temp store: show where the digest
+        # lives in the permanent one (CR 13).
+        blob_uri=_kept_uri(command) or command.blob_uri,
+        kept=command.persisted_at is not None,
         expires_at=expires,
         expired=expires is not None and expires <= now,
+        persisted_at=command.persisted_at,
         horizon_minutes=max(1, int(horizon.total_seconds() // 60)),
         dlq=DLQ,
     )
+
+
+def _kept_uri(command: CaptureCommand) -> str | None:
+    """The permanent store's URI once persisted; ``None`` before, or for a malformed digest."""
+    if command.persisted_at is None or command.content_fingerprint is None:
+        return None
+    try:
+        return permanent_blob_uri(command.content_fingerprint)
+    except ValueError:
+        return None
