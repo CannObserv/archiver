@@ -25,6 +25,7 @@ from src.api.routes.temporal_profiles import router as temporal_profiles_router
 from src.api.routes.tools import router as tools_router
 from src.core import liveness
 from src.core.build import build_id
+from src.core.capture_reader import announced_capture_reader
 from src.core.changes import (
     artifacts_consumer,
     bus_client,
@@ -546,6 +547,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # The processor-text reader (archiver#367 D4): built last, like the Notifier
     # client, and degrade-don't-refuse. No GCS request here.
     app.state.text_reader = announced_text_reader(os.environ)
+    # The capture image reader (archiver#380 D4): the same posture, its own
+    # identity, the captures bucket alone. No GCS request here.
+    app.state.capture_reader = announced_capture_reader(os.environ)
     _announce_links()
 
     # --- Notifications (archiver#369): the consumer, the timer, the drain ---
@@ -708,6 +712,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         watch_events_consumer.bind_context(watch_events_consumer.DispatchContext())
         if app.state.text_reader is not None:
             app.state.text_reader.close()
+        if app.state.capture_reader is not None:
+            app.state.capture_reader.close()
 
 
 def _announce_links() -> None:
