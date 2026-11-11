@@ -33,6 +33,7 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                state: states, health rule, next-due, drift, archiver#151;
                                temporal_profile_form.py — the profile row, #365;
                                watch_check_view.py — the check-now block, #370;
+                               capture_view.py — the Viewport Capture card, #380;
                                replication_actions.py — the manual-replication outcome→flash
                                translation shared by both screens that offer the action, and
                                the one place that records why a refusal is a 200 rather than
@@ -53,7 +54,7 @@ src/core/                      Domain logic
                                info_item_source, rep_spec, info_item_rep_spec,
                                changes_outbox, replication_command,
                                persist_command, watch_check_command,
-                               pm_organization)
+                               capture_command, pm_organization)
   source_spec_schema/          SourceSpec JSON Schema v1 + validator
   rep_spec_schema/             RepSpec envelope + per-provider sub-schemas
                                (providers/{gcs,gdrive,ia}/v1.json)
