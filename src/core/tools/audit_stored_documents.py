@@ -287,6 +287,10 @@ EXEMPT_VALIDATORS: dict[str, str] = {
 """Public ``*_schema`` functions the sweep deliberately does not apply, with why."""
 
 EXEMPT_COLUMNS: dict[str, str] = {
+    "capture_commands.wait": (
+        "the content.capture command's wait as sent, validated by "
+        "ContentCaptureCommandEmit at issuance; a wire record (archiver#380)"
+    ),
     "changes_outbox.payload": "a wire record already published, not an authored document",
     "notification_dispatches.fact": (
         "an info.watch-events fact as received from Watcher, not an authored document "

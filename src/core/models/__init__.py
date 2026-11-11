@@ -3,6 +3,7 @@
 from src.core.models.api_key import ApiKey
 from src.core.models.app_user import AppUser
 from src.core.models.base import Base, TimestampMixin, ULIDType, generate_ulid
+from src.core.models.capture_command import CaptureCommand
 from src.core.models.changes_outbox import ChangesOutboxRow
 from src.core.models.domain import Domain
 from src.core.models.fetch_policy_tombstone import FetchPolicyTombstone
@@ -27,6 +28,7 @@ __all__ = [
     "AppUser",
     "Base",
     "BusTailCursor",
+    "CaptureCommand",
     "ChangesOutboxRow",
     "Domain",
     "FetchPolicyTombstone",

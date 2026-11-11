@@ -1,7 +1,7 @@
 # archiver — Schema: bus-state tables
 
 Per-table contracts and invariants for the tables that record what archiver put on, or read
-from, the change bus: the revocation records, the replicate, persist and watch-check command ledgers, the
+from, the change bus: the revocation records, the replicate, persist, watch-check and capture command ledgers, the
 outbox, the watch-status cache with its tail cursor, and the notification dispatches. Split from [SCHEMA.md](SCHEMA.md), which
 keeps the registry tables; identifiers are verbatim there and here.
 
@@ -90,6 +90,18 @@ keeps the registry tables; identifiers are verbatim there and here.
   `rejected_at` (the fact's `occurred_at`), first write wins. Success is not stored: it is read
   at render from `watch_status.last_full_fetch_at > requested_at`. Written with its
   `info.watch-check` outbox row in one transaction. Ladder: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
+- **`CaptureCommand`** (`capture_commands`) — one `content.capture` command (archiver#380
+  slice A); `PersistCommand`'s shape. States `requested` → `stored` | `failed` | `abandoned`
+  (`CHECK`, because the open index hard-codes `requested`). `info_source_id` FK `CASCADE`;
+  `requested_by` → `app_users.id` `SET NULL`. **What was sent**, verbatim: `url`,
+  `viewport_width`/`viewport_height`, `full_page`, `wait` (JSONB, `NULL` = after `load`).
+  **What came back**, from the first `capture_stored` (C1): `content_fingerprint` (bare hex, an
+  address only), `blob_uri`, `media_type`, `size_bytes`, `image_width`/`image_height` (the
+  stored PNG, not the viewport), `final_url`, `captured_at`, `blob_expires_at` (the temp
+  store's horizon; `NULL` = unknown). Failure: `reason` (opaque), `detail`, `status_code`,
+  `terminal`. `last_fact_at` is the failure ordering high-water mark. **At most one
+  `requested` row per source** is the issuer's rule (`capture.request_capture`, under the
+  source row lock), not an index. Outcome semantics: [BUS_CONSUMERS.md](BUS_CONSUMERS.md).
 - **`BusTailCursor`** (`bus_tail_cursors`) — resume point per tailed stream (archiver#151). A
   groupless tail reader has no server-side delivery cursor; this row makes a restart a delta
   from the last-applied stream id instead of a full `0-0` replay. Advanced in the same

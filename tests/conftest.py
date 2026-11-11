@@ -164,6 +164,9 @@ os.environ.pop("ARCHIVER_FETCH_POLICY_PRODUCER", None)
 # And check-now (archiver#370): set in a shell, every Watcher panel a test renders
 # would carry the block. Tests that need it set it.
 os.environ.pop("ARCHIVER_WATCH_CHECK_ENABLED", None)
+# And capture now (archiver#380): set in a shell, every InfoSource detail a test
+# renders would carry the card. Tests that need it set it.
+os.environ.pop("ARCHIVER_CAPTURE_ENABLED", None)
 # And the notify cutover instant (archiver#369): set in a shell, every lifespan a
 # test runs would refuse to start without Notifier, or queue sends with it.
 os.environ.pop("ARCHIVER_NOTIFY_CUTOVER_AT", None)

@@ -1,0 +1,109 @@
+{#
+  Viewport Capture card (archiver#380 slice A) - InfoSource detail, on the
+  ARCHIVER_CAPTURE_ENABLED switch. Also the response of its own poll,
+  GET /dashboard/info-sources/{id}/capture, and of the button's POST.
+
+  Requires `src`, `capture_enabled`, `capture`, `capture_profile` and
+  `capture_poll_seconds`, all from `_capture_context`, the card's one builder:
+  a site that omits `capture` renders a card that never polls. `capture` is
+  None for a source never captured, else `src/dashboard/capture_view.py`'s
+  fields for the latest command. `swapped` is the caller's: true only for the
+  POST's swap, so the poll never steals focus.
+
+  The button posts `hx-target="#capture-card" hx-swap="outerHTML"` and the
+  response is this card; a refusal (one already pending) rides `showFlash`.
+  The form keeps method/action, so without JS it is a POST → 303 to detail.
+  Disabled while pending - one open command per source.
+
+  While pending the card re-reads itself every `capture_poll_seconds`: the
+  outcome arrives on content.artifacts, a render later. The swap that lands a
+  closed state is the swap that stops it. The button syncs on the card with
+  `drop`, so a poll never beats a click (archiver#220).
+
+  Metadata only: the image itself waits on slice D (Archiver reads no stored
+  bytes).
+#}
+{% from "_macros.html" import copyable, open_button %}
+{% if capture_enabled %}
+<div class="entity-card" id="capture-card" style="margin-top:var(--space-3);"
+     {% if capture and capture.open %}hx-get="/dashboard/info-sources/{{ src.info_source_id }}/capture"
+     hx-trigger="every {{ capture_poll_seconds }}s" hx-swap="outerHTML"
+     hx-sync="this:abort" hx-disinherit="hx-sync"{% endif %}>
+  <div class="entity-card__header">
+    <h2 id="capture-heading" tabindex="-1">Viewport Capture</h2>
+    <div class="entity-card__actions">
+      <form method="post" action="/dashboard/info-sources/{{ src.info_source_id }}/capture-now"
+            hx-post="/dashboard/info-sources/{{ src.info_source_id }}/capture-now"
+            hx-target="#capture-card" hx-swap="outerHTML"
+            hx-sync="closest #capture-card:drop">
+        <button type="submit" class="btn btn--secondary btn--sm"{% if capture and capture.open %} disabled{% endif %}>Capture now</button>
+      </form>
+    </div>
+  </div>
+  <p class="text-sm text-muted" style="margin:0 0 var(--space-2);">
+    Replicator renders this URL headless at {{ capture_profile.width }}×{{ capture_profile.height }}{% if capture_profile.full_page %}, full page{% endif %}, and stores a PNG in its temporary store.
+  </p>
+
+  {% if capture is none %}
+  <p class="text-muted" style="margin:0;">Not captured yet.</p>
+  {% elif capture.state == "requested" %}
+  <p style="margin:0;">Capture pending <span class="text-sm text-muted">· requested {{ capture.requested_ago }}</span></p>
+  {% elif capture.state == "stored" %}
+  <p style="margin:0 0 var(--space-2);">Stored <span class="text-sm text-muted">· rendered {{ capture.captured_ago }}</span></p>
+  <div class="detail-grid">
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Image</span>
+      <span class="detail-grid__value">{{ capture.image_width }} × {{ capture.image_height }} px</span>
+    </div>
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Size</span>
+      <span class="detail-grid__value text-muted">{{ capture.size_bytes | filesizeformat }}</span>
+    </div>
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Expires</span>
+      <span class="detail-grid__value">
+        {% if capture.expires_at is none %}
+        <span class="text-muted">unknown</span>
+        {% elif capture.expired %}
+        <span class="status-pill status-pill--expired">expired</span>
+        <span class="text-sm text-muted">{{ capture.expires_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+        {% else %}
+        {{ capture.expires_at.strftime('%Y-%m-%d %H:%M UTC') }}
+        {% endif %}
+      </span>
+    </div>
+    <div class="detail-grid__item detail-grid__item--full">
+      <span class="detail-grid__label">Landed on</span>
+      <span class="detail-grid__value"><code class="text-sm">{{ capture.final_url }}</code> {{ open_button(capture.final_url) }}</span>
+    </div>
+    <div class="detail-grid__item detail-grid__item--full">
+      <span class="detail-grid__label">Digest</span>
+      <span class="detail-grid__value">{{ copyable(capture.content_fingerprint) }}</span>
+    </div>
+    <div class="detail-grid__item detail-grid__item--full">
+      <span class="detail-grid__label">Stored at</span>
+      <span class="detail-grid__value">{{ copyable(capture.blob_uri) }}</span>
+    </div>
+  </div>
+  {% elif capture.state == "failed" %}
+  <p style="margin:0;">Capture failed: <code>{{ capture.reason }}</code>{% if capture.status_code %} <span class="text-sm text-muted">· HTTP {{ capture.status_code }}</span>{% endif %}
+    <span class="text-sm text-muted">· requested {{ capture.requested_ago }}</span></p>
+  {% if capture.detail %}<p class="text-sm text-muted" style="margin:var(--space-1) 0 0;">{{ capture.detail }}</p>{% endif %}
+  {% else %}{# abandoned: the reaper's verdict on silence, not Replicator's #}
+  <p style="margin:0;">No answer <span class="text-sm text-muted">· requested {{ capture.requested_ago }}, abandoned
+    after {{ capture.horizon_minutes }} min. Replicator may still be retrying, or the command was
+    dead-lettered (<code>{{ capture.dlq }}</code>).</span></p>
+  {% endif %}
+
+  {% if swapped %}
+  {# After the button's swap move focus to the heading (archiver#78 pattern).
+     Rendered only for the POST's response - never on page load or a poll. #}
+  <script>
+    (function () {
+      var h = document.getElementById("capture-heading");
+      if (h) { h.focus(); }
+    }());
+  </script>
+  {% endif %}
+</div>
+{% endif %}

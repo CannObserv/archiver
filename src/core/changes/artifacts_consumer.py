@@ -5,7 +5,9 @@ Archiver issues replication (archiver#169) and this is where the outcome lands
 one consumer group seeing success and failure, because "did this command close?"
 is one question. The persist outcomes (``blob_persisted`` / ``persist_failed``,
 archiver#276) share it for the same reason, and are applied by
-``src.core.services.persist_writeback``.
+``src.core.services.persist_writeback``; so do the capture outcomes
+(``capture_stored`` / ``capture_failed``, archiver#380), applied by
+``src.core.services.capture``.
 
 **Every outcome type Archiver issues for needs a branch here, in the same change
 as the co-core pin that decodes it.** Once a type decodes, the fall-through below
@@ -30,9 +32,12 @@ ingest. What is specific to this stream:
   rather than loss.
 
 The reaper for the silent case — a command that produces *neither* fact — is
-``src.core.services.replication_writeback.reap_open_commands``, run on its own
-timer rather than from this loop: it must fire whether or not any message
-arrives, which is precisely the condition it exists to detect.
+``src.core.changes.replication_reaper``, run on its own timer rather than from
+this loop: it must fire whether or not any message arrives, which is precisely
+the condition it exists to detect. It sweeps all three command families:
+replication (``replication_writeback.reap_open_commands``), persist
+(``persist_issuance.reap_open_persists``) and capture
+(``capture.reap_open_captures``).
 """
 
 from __future__ import annotations
@@ -44,6 +49,8 @@ from typing import TYPE_CHECKING
 from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS, group_name
 from co_core.pure.models.changes import (
     BlobPersistedEvent,
+    CaptureFailedEvent,
+    CaptureStoredEvent,
     PersistFailedEvent,
     ReplicationCompleteEvent,
     ReplicationFailedEvent,
@@ -55,6 +62,7 @@ from src.core.changes import group_consumer
 from src.core.changes.backoff import ERROR_BACKOFF_BASE_SECONDS
 from src.core.liveness import LoopProgress
 from src.core.logging import get_logger
+from src.core.services.capture import apply_capture_failed, apply_capture_stored
 from src.core.services.persist_writeback import apply_persist_failed, apply_persisted
 from src.core.services.replication_writeback import (
     UnknownCommandError,
@@ -161,6 +169,22 @@ async def handle_message(
                 detail=payload.detail,
                 occurred_at=payload.occurred_at,
             ),
+            command_id=payload.command_id,
+        )
+
+    if isinstance(payload, CaptureStoredEvent):
+        return await _apply(
+            session_factory,
+            message,
+            lambda session: apply_capture_stored(session, payload),
+            command_id=payload.command_id,
+        )
+
+    if isinstance(payload, CaptureFailedEvent):
+        return await _apply(
+            session_factory,
+            message,
+            lambda session: apply_capture_failed(session, payload),
             command_id=payload.command_id,
         )
 

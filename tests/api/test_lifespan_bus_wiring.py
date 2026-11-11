@@ -291,11 +291,15 @@ async def test_the_registry_snapshot_fills_the_drains_cap_map(
 
 
 @pytest.mark.asyncio
-async def test_watch_check_is_neither_trimmed_nor_capped(bus_env, bus_client_calls, test_engine):
-    """info.watch-check is a command stream Archiver issues (archiver#370).
+@pytest.mark.parametrize("topic", ["info.watch-check", "content.capture"])
+async def test_command_streams_are_neither_trimmed_nor_capped(
+    bus_env, bus_client_calls, test_engine, topic
+):
+    """info.watch-check (archiver#370) and content.capture (archiver#380) are
+    command streams Archiver issues.
 
     Named explicitly beside the two literal pins above: neither the XTRIM
-    allowlist nor the per-publish cap may ever name it (broker STREAMS.md,
+    allowlist nor the per-publish cap may ever name them (broker STREAMS.md,
     "never XTRIMmed"), whatever else joins them.
     """
     bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
@@ -310,9 +314,9 @@ async def test_watch_check_is_neither_trimmed_nor_capped(bus_env, bus_client_cal
         async with lifespan(app):
             pass
 
-    assert "info.watch-check" not in captured["trim_topics"]
-    assert "info.watch-check" not in captured["topic_maxlen"]
-    assert "info.watch-check" not in seeded["topics"]
+    assert topic not in captured["trim_topics"]
+    assert topic not in captured["topic_maxlen"]
+    assert topic not in seeded["topics"]
 
 
 @pytest.mark.asyncio

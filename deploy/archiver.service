@@ -75,6 +75,13 @@ Environment=ARCHIVER_FETCH_POLICY_PRODUCER=1
 # rule as above: never in an env file.
 Environment=ARCHIVER_WATCH_CHECK_ENABLED=1
 
+# Capture now (archiver#380): InfoSource detail's Viewport Capture card, which
+# commands Replicator on content.capture. The flip uncomments this in its own
+# change; the first click then goes to CannObserv/broker#116's read-back. Off,
+# the card is absent, its routes 404 and nothing is enqueued. Same rule as
+# above: never in an env file.
+#Environment=ARCHIVER_CAPTURE_ENABLED=1
+
 # The liveness heartbeat (archiver#297): checks in `ok` to co-archiver-live
 # (tenant co-archiver, CannObserv/status#47) every 5 min while every expected
 # bus loop is progressing; silence past the grace pages. Same rule again: the

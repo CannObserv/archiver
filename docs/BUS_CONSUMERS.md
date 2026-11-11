@@ -169,11 +169,25 @@ recorded; the command closes **only** when `terminal` is true.
 - **The co-core pin and these branches ship together.** Once a type decodes, the
   handler's fall-through acks it as foreign: an outcome with no branch is lost,
   not quarantined.
-- **One exception, unreachable today: the capture pair.** `capture_stored` /
-  `capture_failed` (cannobserv#571) decode since co-core 0.37.1 and have no
-  branch, so they take that ack (archiver#397). Archiver is the only issuer of
-  `content.capture` and issues nothing yet, so no outcome can arrive; the
-  branches land with the producer (archiver#380).
+
+**Capture outcomes** (archiver#380 slice A, cannobserv#571). `capture_stored` and
+`capture_failed` ride the same stream and group, applied by
+`src/core/services/capture.py` against `capture_commands`, correlated on
+`command_id` alone (`info_source_id` is echoed, never routed on). Until #380
+they decoded and took the foreign-event ack (#397).
+
+- **The first success is kept (C1).** A redelivery past Replicator's dedupe
+  window renders again, usually under another digest; it is logged, not applied,
+  so a later persist names one stable object.
+- **A success outranks a failure or an abandon**, in either arrival order: an
+  image exists once any fact says so.
+- **`terminal` first, then `reason` opaque (C2).** A terminal failure closes the
+  command `failed` with `reason`, `detail` and `status_code` verbatim; a
+  non-terminal one is recorded and the command stays open. `wait_timeout` is
+  terminal: re-issuing with another condition is a person's call in slice A.
+- **`content_fingerprint` is an address, not a change signal**: two renders of
+  an unchanged page usually differ. Nothing compares it.
+- **An unknown `command_id`** is ack + WARNING, never the DLQ.
 
 **The reaper** (`src/core/changes/replication_reaper.py`) closes the silent case
 MUST-6 names: Replicator does not guarantee that every command either succeeds or
@@ -192,6 +206,14 @@ may have moved to new bytes), only while `ARCHIVER_PERSIST_ISSUANCE` is on, and
 at most `MAX_REISSUES` (3) times per digest. A duplicate persist
 is a no-op success on a content-addressed key, which is why re-issue is safe here
 and not for replication. Past the cap the digest waits for a re-observation.
+
+**Capture commands ride it too** (archiver#380 slice A): open past
+`capture.DEFAULT_REAP_HORIZON` (1 h; a render is bounded by Replicator's 120 s
+deadline and paced per host) they close `abandoned` with `no_fact_before_horizon`,
+and **nothing is re-issued**: every capture is a person's click, and the person
+clicks again. The capped automatic re-issue C2 asks for arrives with slice C's
+unattended triggers. Each family sweeps in its own transaction; a defect in one
+is logged and contained.
 
 ## Change-bus consumer - `info.watch-events` (archiver#369)
 

@@ -197,8 +197,9 @@ in a swapped partial is safe because of this setting.
 changes behaviour rather than omitting text - today the two replication
 assignment sections, whose `poll` drives the self-refresh (#212), the
 InfoItem Fields block, whose `rows` an omission turns into "nothing required"
-(#307), the picker (`entries`, #308) and the Organization row (`org_row`,
-`power_map_configured`, #306) - takes its
+(#307), the picker (`entries`, #308), the Organization row (`org_row`,
+`power_map_configured`, #306) and InfoSource detail's Viewport Capture card
+(`capture`, `capture_enabled`, `capture_poll_seconds`, #380) - takes its
 whole context from one builder, and every render site spreads it: the swaps, the
 poll, and the full page that includes it. Jinja's default `Undefined` is falsy
 and renders empty, so a site that forgets a key does not fail - it renders a
