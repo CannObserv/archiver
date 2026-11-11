@@ -26,6 +26,7 @@ from ulid import ULID
 from src.core.fingerprints import is_valid_fingerprint
 from src.core.logging import get_logger
 from src.core.models import ChangesOutboxRow, InfoItemSource, InfoSource, SourceRevision
+from src.core.services.capture import capture_for_revision
 from src.core.services.persist_issuance import issue_persist
 from src.core.services.replication_issuance import issue_for_revision
 from src.core.spec_match import (
@@ -270,6 +271,10 @@ async def record_revision(
         # same occasion, and a second command_id for it is exactly the
         # re-replication MUST-1 reserves for a genuinely new one.
         await issue_for_revision(session, row)
+        # A viewport capture for a source whose policy opts in (archiver#380
+        # slice C, D3). New revisions only, like replication: a redelivery is
+        # the same occasion.
+        await capture_for_revision(session, row)
     else:
         _refresh_spec_comparison(row, facts, comparison)
         if _refresh_cache_reference(row, facts):

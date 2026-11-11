@@ -314,9 +314,31 @@ async def _capture_state(session_factory, command_id: str) -> tuple[str, str | N
 
 
 @pytest.mark.asyncio
-async def test_the_sweep_abandons_a_silent_capture_and_commits(session_factory, monkeypatch):
-    """Captures ride the same timer; in slice A the reaper re-issues nothing."""
+async def test_the_sweep_abandons_a_silent_capture_reissues_it_and_commits(
+    session_factory, monkeypatch
+):
+    """Captures ride the same timer; slice C re-issues a silent one, capped (C2)."""
     monkeypatch.setenv(capture.ENABLED_ENV, "1")
+    command_id = await _open_capture(session_factory, age=timedelta(hours=2))
+
+    await replication_reaper.sweep_once(session_factory, horizon=timedelta(hours=6))
+
+    assert await _capture_state(session_factory, command_id) == (
+        capture.STATE_ABANDONED,
+        capture.REASON_NO_FACT,
+        1,
+    )
+    async with session_factory() as s:
+        [reissue] = (
+            (await s.execute(select(CaptureCommand).where(CaptureCommand.reissue_of == command_id)))
+            .scalars()
+            .all()
+        )
+        assert (reissue.state, reissue.attempt) == (capture.STATE_REQUESTED, 2)
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_abandons_without_reissue_while_capture_is_off(session_factory):
     command_id = await _open_capture(session_factory, age=timedelta(hours=2))
 
     await replication_reaper.sweep_once(session_factory, horizon=timedelta(hours=6))

@@ -17,10 +17,10 @@ is to re-issue, capped, because a duplicate persist is a no-op success on a
 content-addressed key — see ``persist_issuance.reap_open_persists``. A re-issue
 is an outbox row, so the publisher still does the publishing.
 
-**Capture commands ride it too** (archiver#380 slice A), past their own
-one-hour horizon (``capture.DEFAULT_REAP_HORIZON``). They are abandoned and
-not re-issued: in slice A every capture is a person's click, and the person
-re-issues. The same half runs slice B's catch-up
+**Capture commands ride it too** (archiver#380), past their own one-hour
+horizon (``capture.DEFAULT_REAP_HORIZON``). Each is abandoned and, in the same
+transaction, re-issued with what it sent, up to ``capture.MAX_CAPTURE_REISSUES``
+times (slice C; C2 asks for it). The same half runs slice B's catch-up
 (``persist_issuance.persist_missing_captures``): a stored capture still owed a
 ``content.persist`` gets one, after the persist half above has abandoned any
 silent one.
@@ -121,13 +121,13 @@ async def _sweep_captures(
     session_factory: async_sessionmaker[AsyncSession], *, horizon: timedelta
 ) -> None:
     async with session_factory() as session:
-        abandoned = await capture.reap_open_captures(session, horizon=horizon)
-        if abandoned:
+        reaped = await capture.reap_open_captures(session, horizon=horizon)
+        if reaped.abandoned:
             await session.commit()
-    if abandoned:
+    if reaped.abandoned:
         logger.warning(
             "Abandoned silent capture commands past the horizon",
-            extra={"abandoned": abandoned},
+            extra={"abandoned": reaped.abandoned, "reissued": reaped.reissued},
         )
     # Slice B's catch-up, in its own transaction: a defect here must not roll
     # back the abandons above (CR 11).
