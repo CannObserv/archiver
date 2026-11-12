@@ -712,3 +712,55 @@ async def test_the_catch_up_counts_and_dedupes_per_store(session, enabled):
         .all()
     )
     assert [c.capture_command_id for c in issued] == [new.command_id]
+
+
+async def _captures_store_command(session, *, state: str, digest: str = DIGEST) -> PersistCommand:
+    """A persist sent from co-gcs-captures, as the capture catch-up leaves it."""
+    capture = await _stored_capture(
+        session,
+        digest=digest,
+        url=f"https://example.com/captures-store-{await _count(session, PersistCommand)}",
+        blob_uri=f"{CAPTURES_TEMP}/{digest}.bin",
+    )
+    command = PersistCommand(
+        command_id=f"cap-{await _count(session, PersistCommand)}",
+        capture_command_id=capture.command_id,
+        content_fingerprint=digest,
+        blob_uri=capture.blob_uri,
+        media_type="image/png",
+        state=state,
+        issued_at=datetime.now(UTC) - HORIZON * 2,
+        closed_at=None if state == STATE_REQUESTED else datetime.now(UTC) - HORIZON,
+    )
+    session.add(command)
+    await session.flush()
+    return command
+
+
+@pytest.mark.asyncio
+async def test_a_silent_captures_store_persist_reissues_no_revision(session, enabled):
+    """The reaper re-issues only into the revisions' store (#380 D4): a capture's
+    re-issue is the catch-up's, from its own bucket."""
+    revision = await _revision(session)  # carries the same digest, in the other store
+    command = await _captures_store_command(session, state=STATE_REQUESTED)
+
+    assert await reap_open_persists(session, horizon=HORIZON) == (1, 0)
+    assert command.state == STATE_ABANDONED
+    assert (
+        await _count(
+            session,
+            PersistCommand,
+            PersistCommand.source_revision_id == revision.source_revision_id,
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_abandons_in_the_captures_store_do_not_spend_a_revisions_cap(session, enabled):
+    revision = await _revision(session)
+    for _ in range(MAX_REISSUES):
+        await _captures_store_command(session, state=STATE_ABANDONED)
+    await _raw_command(session, revision)
+
+    assert await reap_open_persists(session, horizon=HORIZON) == (1, 1)

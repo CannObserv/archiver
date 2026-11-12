@@ -262,7 +262,9 @@ async def reap_open_persists(
     comes from an eligible revision carrying it, the one with the latest
     horizon, so the freshest temp blob is read. Only while switched on, no other
     command for the digest is open, and the digest has been abandoned no more
-    than ``MAX_REISSUES`` times. Does not commit.
+    than ``MAX_REISSUES`` times - all within the revisions' store: a silent
+    persist from the captures bucket is abandoned here and re-issued by
+    ``persist_missing_captures`` (#380 D4). Does not commit.
     """
     cutoff = datetime.now(UTC) - horizon
     stale = list(
@@ -302,7 +304,9 @@ async def reap_open_persists(
     seen: set[str] = set()
     for command in stale:
         digest = command.content_fingerprint
-        if digest in seen:
+        # Only into the revisions' store (#380 D4): a persist from the captures
+        # bucket is the capture catch-up's to re-issue, from that bucket.
+        if digest in seen or in_captures_store(command.blob_uri):
             continue
         seen.add(digest)
         abandoned = (
@@ -312,6 +316,7 @@ async def reap_open_persists(
                 .where(
                     PersistCommand.content_fingerprint == digest,
                     PersistCommand.state == STATE_ABANDONED,
+                    _store_filter(PersistCommand.blob_uri, captures_store=False),
                 )
             )
         ).scalar_one()
