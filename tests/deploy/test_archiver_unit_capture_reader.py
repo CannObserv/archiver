@@ -6,10 +6,9 @@ systemd credential with the empty ``SetCredential=`` fallback, the
 processor-text reader's shape: a missing key starts the service with images
 unavailable and one WARNING.
 
-**Dark until its flip.** Both lines ship commented: until the operator has
-provisioned the bucket, the grant and the key (CannObserv/replicator#189), an
-active line would warn on every start. The flip uncomments them and changes
-these tests.
+**Flipped** (2026-11-12): the operator provisioned the bucket, the grant and the
+key (CannObserv/replicator#189), and a read as the unit's identity was proven
+first. Rollback re-comments both lines and redeploys.
 """
 
 import re
@@ -32,15 +31,15 @@ def _lines(pattern: str) -> list[str]:
     ]
 
 
-def test_the_credential_ships_dark() -> None:
-    assert _lines(r"\s*(LoadCredential|SetCredential)=") == []
-
-
-def test_the_flip_is_two_uncommented_lines_away() -> None:
-    assert _lines(r"\s*#(LoadCredential|SetCredential)=") == [
-        f"#LoadCredential={CREDENTIAL_NAME}:{CREDENTIAL_FILE}",
-        f"#SetCredential={CREDENTIAL_NAME}:\\n",
+def test_the_credential_is_loaded_with_the_empty_fallback() -> None:
+    assert _lines(r"\s*(LoadCredential|SetCredential)=") == [
+        f"LoadCredential={CREDENTIAL_NAME}:{CREDENTIAL_FILE}",
+        f"SetCredential={CREDENTIAL_NAME}:\\n",
     ]
+
+
+def test_no_commented_copy_is_left_behind() -> None:
+    assert _lines(r"\s*#(LoadCredential|SetCredential)=") == []
 
 
 @pytest.mark.parametrize("unit", OTHER_UNITS, ids=[p.name for p in OTHER_UNITS])
