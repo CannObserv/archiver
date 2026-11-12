@@ -764,3 +764,17 @@ async def test_abandons_in_the_captures_store_do_not_spend_a_revisions_cap(sessi
     await _raw_command(session, revision)
 
     assert await reap_open_persists(session, horizon=HORIZON) == (1, 1)
+
+
+@pytest.mark.asyncio
+async def test_a_capture_in_its_own_bucket_never_adopts_from_a_revision(session, enabled):
+    """Across kinds too: a fetched revision's kept bytes are no copy in the captures bucket."""
+    revision = await _revision(session, digest=CAPTURE_DIGEST)
+    revision.persisted_at = datetime(2026, 11, 1, tzinfo=UTC)
+    capture = await _stored_capture(session, blob_uri=f"{CAPTURES_TEMP}/{CAPTURE_DIGEST}.bin")
+    await session.flush()
+
+    command = await issue_capture_persist(session, capture)
+
+    assert command is not None
+    assert capture.persisted_at is None
