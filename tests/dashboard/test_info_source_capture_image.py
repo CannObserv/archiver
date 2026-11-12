@@ -132,6 +132,25 @@ async def test_a_matching_etag_is_a_304_with_no_read(client, session, storage):
     assert storage.gets == []
 
 
+async def test_no_transaction_is_held_across_the_read(client, session, monkeypatch):
+    """A GCS read can take a minute: idle-in-transaction would block a deploy's migration."""
+    held: list[bool] = []
+
+    class Watching(CaptureReader):
+        def read(self, uri, digest):
+            held.append(session.in_transaction())
+            return super().read(uri, digest)
+
+    fake = FakeStorage({TEMP: FakeBlob(PNG)})
+    monkeypatch.setattr(capture_reader, "_bound", Watching(fake))
+    command = await _stored(session)
+
+    r = await _image(client, _image_path(command))
+
+    assert r.status_code == 200
+    assert held == [False]
+
+
 # --- 2. kept ---
 
 

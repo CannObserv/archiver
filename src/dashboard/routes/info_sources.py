@@ -614,7 +614,11 @@ async def capture_image(
     reader = capture_reader.bound()
     if uri is None or reader is None:
         raise DashboardNotFound("Capture image not available")
-    etag = f'"{command.content_fingerprint}"'
+    digest = command.content_fingerprint
+    # Read-only, and done with the database: end the transaction before a GCS
+    # read that can take a minute, or a deploy's migration queues behind it.
+    await session.commit()
+    etag = f'"{digest}"'
     headers = {
         "Cache-Control": _IMAGE_CACHE,
         "ETag": etag,
@@ -623,7 +627,7 @@ async def capture_image(
     if request.headers.get("If-None-Match") == etag:
         return Response(status_code=304, headers=headers)
     try:
-        data = await read_capture(reader, uri, command.content_fingerprint)
+        data = await read_capture(reader, uri, digest)
     except CaptureUnavailable as e:
         raise DashboardNotFound("Capture image not available") from e
     return Response(content=data, media_type=IMAGE_MEDIA_TYPE, headers=headers)
