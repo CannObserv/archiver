@@ -16,6 +16,7 @@ Covers:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from co_core.pure.util.hashing import sha256
@@ -107,6 +108,21 @@ async def test_the_card_shows_the_image(client, session, storage):
     assert f'src="{_image_path(command)}"' in card
     assert 'alt="Viewport capture of https://example.com/imaged' in card
     assert storage.gets == []  # the card never reads; the browser asks the route
+
+
+async def test_the_scroll_region_is_one_styled_tab_stop(client, session, storage):
+    """Keyboard-scrollable with a visible focus ring (as .table-scroll), and no second
+    stop: the "Open full size" link is the one link to the image."""
+    command = await _stored(session)
+
+    card = await _card(client, command)
+    region = card.split('class="capture-image"', 1)[1].split("</div>", 1)[0]
+
+    assert "<a " not in region
+    assert "style=" not in region
+    css = (Path(__file__).resolve().parents[2] / "src/dashboard/static/dashboard.css").read_text()
+    assert ".capture-image:focus-visible" in css
+    assert card.count(f'href="{_image_path(command)}"') == 1
 
 
 async def test_the_route_serves_the_png_private_and_immutable(client, session, storage):

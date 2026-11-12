@@ -100,14 +100,12 @@
   {% if capture.image_url %}
   {#- Slice D (D4): served by this dashboard from the captures bucket. A
       full-page capture can be tens of thousands of pixels tall, so it scrolls
-      inside a bounded, keyboard-reachable region; the link opens it whole. -#}
-  <div class="capture-image" tabindex="0" role="region" aria-label="Viewport capture image"
-       style="margin-top:var(--space-2);max-height:32rem;overflow:auto;border:1px solid var(--color-border);">
-    <a href="{{ capture.image_url }}" target="_blank" rel="noopener">
-      <img src="{{ capture.image_url }}" loading="lazy" style="display:block;max-width:100%;height:auto;"
-           width="{{ capture.image_width }}" height="{{ capture.image_height }}"
-           alt="Viewport capture of {{ src.url }}, {{ capture.image_width }}×{{ capture.image_height }} px">
-    </a>
+      inside a bounded, keyboard-reachable region (.capture-image); the link
+      below opens it whole. -#}
+  <div class="capture-image" tabindex="0" role="region" aria-label="Viewport capture image">
+    <img src="{{ capture.image_url }}" loading="lazy"
+         width="{{ capture.image_width }}" height="{{ capture.image_height }}"
+         alt="Viewport capture of {{ src.url }}, {{ capture.image_width }}×{{ capture.image_height }} px">
   </div>
   <p class="text-sm text-muted" style="margin:var(--space-1) 0 0;"><a href="{{ capture.image_url }}" target="_blank" rel="noopener">Open full size</a></p>
   {% elif capture.image_note %}
