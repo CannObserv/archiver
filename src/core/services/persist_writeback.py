@@ -10,7 +10,11 @@ recognised as ours; the digest is what a success is *about*. So a success stamps
 ``persisted_at`` on every revision whose ``blob_fingerprint`` matches, whichever
 revision occasioned the command, and on every viewport capture whose
 ``content_fingerprint`` matches (archiver#380 slice B): a capture can occasion a
-persist too, and identical bytes are one stored object.
+persist too, and identical bytes are one stored object **within a store**. Since
+#380 D4 captures have their own bucket: a persist whose ``blob_uri`` is in
+``co-gcs-captures`` stamps only the captures stored there, and any other persist
+stamps the revisions and the captures stored before the split. The same bytes in
+the other store are another object, which nobody may assume is kept.
 
 **``persisted_at`` is a minimum.** ``occurred_at`` is the fact's publish time, an
 upper bound on the write. A redelivery that finds the object present re-emits
@@ -35,6 +39,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.logging import get_logger
 from src.core.models import CaptureCommand, PersistCommand, SourceRevision
+from src.core.replication.permanent_store import (
+    in_captures_store,
+    stored_in_captures_bucket,
+    stored_outside_captures_bucket,
+)
 from src.core.services.replication_writeback import UnknownCommandError
 
 logger = get_logger(__name__)
@@ -86,15 +95,29 @@ async def apply_persisted(
 
     # Every success is evidence about the digest, even one that is stale for the
     # command's own ordering: it only ever lowers the minimum. The digest owns the
-    # object, so revisions and captures (archiver#380 slice B) carrying it are
+    # object within its store (#380 D4), so the rows of that store carrying it are
     # stamped alike, whichever of them occasioned the command.
-    for model, digest_column in (
-        (SourceRevision, SourceRevision.blob_fingerprint),
-        (CaptureCommand, CaptureCommand.content_fingerprint),
-    ):
+    if in_captures_store(command.blob_uri):
+        targets = [
+            (
+                CaptureCommand,
+                CaptureCommand.content_fingerprint == content_fingerprint,
+                stored_in_captures_bucket(CaptureCommand.blob_uri),
+            )
+        ]
+    else:
+        targets = [
+            (SourceRevision, SourceRevision.blob_fingerprint == content_fingerprint),
+            (
+                CaptureCommand,
+                CaptureCommand.content_fingerprint == content_fingerprint,
+                stored_outside_captures_bucket(CaptureCommand.blob_uri),
+            ),
+        ]
+    for model, *where in targets:
         await session.execute(
             update(model)
-            .where(digest_column == content_fingerprint)
+            .where(*where)
             .values(
                 persisted_at=func.least(func.coalesce(model.persisted_at, occurred_at), occurred_at)
             )

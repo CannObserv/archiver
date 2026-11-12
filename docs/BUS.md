@@ -319,11 +319,12 @@ contract is Replicator's `docs/contracts/content-persist-issuer-contract.md`
   contract C3). Applying `capture_stored` issues one persist, in that transaction, with the
   fact's `content_fingerprint`, `blob_uri` and `media_type` verbatim; the row carries
   `capture_command_id` in place of `source_revision_id` (exactly one is set). The same switch,
-  the same one-open-per-digest rule, and adoption across revisions and captures alike. Not
+  the same one-open-per-digest rule, and adoption across revisions and captures, each
+  **per store** (#380 D4, `permanent_store.kept_capture_uri`). Not
   issued past `blob_expires_at`. A capture has no re-observation to re-arm it, so the reaper's
   timer runs a catch-up (`persist_missing_captures`): every stored, unpersisted, unexpired
   capture with no open persist for its digest gets one, up to `1 + MAX_REISSUES` commands
-  per digest.
+  per digest; the reaper itself re-issues only revisions.
 - **The pair goes out as recorded (P4):** `content_fingerprint` is
   `source_revisions.blob_fingerprint`, `blob_uri` its `content_cache_uri`, both
   from the same observation. A row with no digest is never issued.

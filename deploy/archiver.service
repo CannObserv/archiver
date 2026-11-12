@@ -128,6 +128,17 @@ Environment=ARCHIVER_PROCESSOR_TEXT_BUCKET=co-gcs-processor
 LoadCredential=processor-text-reader:/etc/archiver/processor-text-reader.json
 SetCredential=processor-text-reader:\n
 
+# The capture image reader (archiver#380 D4): the dashboard shows a capture's
+# PNG from gs://co-gcs-captures, as its own service account,
+# archiver-capture-reader, objectViewer on that bucket alone - never the
+# buckets raw blobs live in (content.blobs). The processor reader's shape: a
+# credential WITH the empty fallback, so a missing key starts the service with
+# images unavailable and one WARNING. Dark until the operator provisions the
+# bucket, the grant and the key (CannObserv/replicator#189); the flip uncomments
+# both lines.
+#LoadCredential=capture-reader:/etc/archiver/capture-reader.json
+#SetCredential=capture-reader:\n
+
 # Where notification and API links point (archiver#367): the origin people open,
 # never an internal address. A line in /etc/archiver/.env would override this one
 # (EnvironmentFile= wins), so that file must not carry it.

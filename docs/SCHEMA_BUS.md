@@ -109,7 +109,10 @@ keeps the registry tables; identifiers are verbatim there and here.
   store's horizon; `NULL` = unknown). Failure: `reason` (opaque), `detail`, `status_code`,
   `terminal`. `last_fact_at` is the failure ordering high-water mark. `persisted_at` (slice B)
   is `source_revisions.persisted_at`'s rule: the minimum `blob_persisted` time for the digest,
-  stamped by any persist of those bytes; set, `blob_expires_at` no longer binds. **At most one
+  stamped by any persist of those bytes **in the same store**; set, `blob_expires_at` no
+  longer binds. The store is the bucket `blob_uri` names: `co-gcs-captures` keeps a capture
+  apart from revisions (#380 D4, `permanent_store.kept_capture_uri`); a capture stored before
+  that split was kept with them. **At most one
   `requested` row per source** is the issuer's rule (`capture.request_capture`, under the
   source row lock), not an index. Outcome semantics: [BUS_CONSUMERS.md](BUS_CONSUMERS.md).
 - **`BusTailCursor`** (`bus_tail_cursors`) — resume point per tailed stream (archiver#151). A

@@ -20,8 +20,10 @@
   closed state is the swap that stops it. The button syncs on the card with
   `drop`, so a poll never beats a click (archiver#220).
 
-  Metadata only: the image itself waits on slice D (Archiver reads no stored
-  bytes). A persisted capture (slice B) reads "Kept" in place of its expiry.
+  A stored capture in the captures bucket shows its image (slice D, D4),
+  fetched by the browser from GET .../captures/{command_id}.png; one stored
+  before the split, or with no reader on this server, says why instead. A
+  persisted capture (slice B) reads "Kept" in place of its expiry.
   Slice C: a line under the state says what the command sent and why - on
   demand, or on a new revision (linked; the capture renders the live page
   around it) - and which attempt it is once the reaper has re-issued it. The
@@ -95,6 +97,20 @@
       <span class="detail-grid__value">{{ copyable(capture.blob_uri) }}</span>
     </div>
   </div>
+  {% if capture.image_url %}
+  {#- Slice D (D4): served by this dashboard from the captures bucket. A
+      full-page capture can be tens of thousands of pixels tall, so it scrolls
+      inside a bounded, keyboard-reachable region (.capture-image); the link
+      below opens it whole. -#}
+  <div class="capture-image" tabindex="0" role="region" aria-label="Viewport capture image">
+    <img src="{{ capture.image_url }}" loading="lazy"
+         width="{{ capture.image_width }}" height="{{ capture.image_height }}"
+         alt="Viewport capture of {{ src.url }}, {{ capture.image_width }}×{{ capture.image_height }} px">
+  </div>
+  <p class="text-sm text-muted" style="margin:var(--space-1) 0 0;"><a href="{{ capture.image_url }}" target="_blank" rel="noopener">Open full size</a></p>
+  {% elif capture.image_note %}
+  <p class="text-sm text-muted" style="margin:var(--space-2) 0 0;">{{ capture.image_note }}</p>
+  {% endif %}
   {% elif capture.state == "failed" %}
   <p style="margin:0;">Capture failed: <code>{{ capture.reason }}</code>{% if capture.status_code %} <span class="text-sm text-muted">· HTTP {{ capture.status_code }}</span>{% endif %}
     <span class="text-sm text-muted">· requested {{ capture.requested_ago }}</span></p>

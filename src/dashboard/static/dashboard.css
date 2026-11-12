@@ -689,6 +689,25 @@ a.badge:hover { text-decoration: underline; }
   outline-offset: 2px;
 }
 
+/* A capture image (archiver#380 D4): a full-page capture can be tens of
+   thousands of pixels tall, so it scrolls inside a bounded region, keyboard-
+   scrollable like .table-scroll and with its focus ring. */
+.capture-image {
+  margin-top: var(--space-2);
+  max-height: 32rem;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+}
+.capture-image:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+.capture-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;

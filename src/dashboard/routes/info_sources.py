@@ -5,15 +5,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
+from src.core import capture_reader
+from src.core.capture_reader import IMAGE_MEDIA_TYPE, CaptureUnavailable, image_uri, read_capture
 from src.core.logging import get_logger
 from src.core.models import (
+    CaptureCommand,
     InfoItem,
     InfoItemSource,
     InfoSource,
@@ -174,7 +177,12 @@ async def _capture_context(src: InfoSource, session: AsyncSession) -> dict:
     return {
         "src": src,
         "capture_enabled": enabled,
-        "capture": capture_view(command, now=datetime.now(UTC), horizon=DEFAULT_REAP_HORIZON),
+        "capture": capture_view(
+            command,
+            now=datetime.now(UTC),
+            horizon=DEFAULT_REAP_HORIZON,
+            image_reader=capture_reader.bound() is not None,
+        ),
         "capture_poll_seconds": CAPTURE_POLL_SECONDS,
     }
 
@@ -572,3 +580,54 @@ async def save_capture_policy(
     body = "Capture policy cleared." if policy is None else "Capture policy saved."
     response.headers["HX-Trigger"] = json.dumps({"showFlash": {"level": "success", "body": body}})
     return response
+
+
+# ---------------------------------------------------------------------------
+# GET /{source_id}/captures/{command_id}.png  (archiver#380 slice D, D4)
+# ---------------------------------------------------------------------------
+
+#: Content-addressed: the bytes behind a command's digest never change.
+_IMAGE_CACHE = "private, max-age=31536000, immutable"
+
+
+@router.get("/{source_id}/captures/{command_id}.png", response_model=None)
+async def capture_image(
+    source_id: str,
+    command_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """A stored capture's PNG, read from the captures bucket and served behind the login.
+
+    404 while the switch is off, for an unknown or foreign command, for one
+    whose image Archiver may not or cannot read (``capture_reader.image_uri``),
+    with no reader, or on a failed read or hash check. A matching
+    ``If-None-Match`` is a 304 without a read: the ETag is the digest.
+    """
+    _require_capture()
+    src = await _resolve_source(source_id, session)
+    command = await session.get(CaptureCommand, command_id)
+    if command is None or command.info_source_id != src.info_source_id:
+        raise DashboardNotFound("Capture not found")
+    uri = image_uri(command, now=datetime.now(UTC))
+    reader = capture_reader.bound()
+    if uri is None or reader is None:
+        raise DashboardNotFound("Capture image not available")
+    digest = command.content_fingerprint
+    # Read-only, and done with the database: end the transaction before a GCS
+    # read that can take a minute, or a deploy's migration queues behind it.
+    await session.commit()
+    etag = f'"{digest}"'
+    headers = {
+        "Cache-Control": _IMAGE_CACHE,
+        "ETag": etag,
+        "X-Content-Type-Options": "nosniff",
+    }
+    if request.headers.get("If-None-Match") == etag:
+        return Response(status_code=304, headers=headers)
+    try:
+        data = await read_capture(reader, uri, digest)
+    except CaptureUnavailable as e:
+        raise DashboardNotFound("Capture image not available") from e
+    return Response(content=data, media_type=IMAGE_MEDIA_TYPE, headers=headers)

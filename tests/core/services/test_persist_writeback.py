@@ -417,7 +417,16 @@ async def test_mismatched_success_after_a_real_one_changes_nothing(session, revi
 # --- a capture's persist (archiver#380 slice B) ---
 
 
-async def _capture(session, *, digest: str = DIGEST, url: str = "https://example.com/cap"):
+CAPTURES_TEMP = "gs://co-gcs-captures/temp"
+
+
+async def _capture(
+    session,
+    *,
+    digest: str = DIGEST,
+    url: str = "https://example.com/cap",
+    temp: str = "gs://co-gcs-blobs/blobs",
+):
     source = InfoSource(url=url, source_specs=[])
     session.add(source)
     await session.flush()
@@ -430,7 +439,7 @@ async def _capture(session, *, digest: str = DIGEST, url: str = "https://example
         full_page=True,
         state="stored",
         content_fingerprint=digest,
-        blob_uri=f"gs://co-gcs-blobs/blobs/{digest}.bin",
+        blob_uri=f"{temp}/{digest}.bin",
         media_type="image/png",
     )
     session.add(capture)
@@ -528,4 +537,54 @@ async def test_a_capture_persist_mismatch_stamps_nothing(session):
     await session.refresh(capture)
     assert command.state == STATE_FAILED
     assert command.reason == REASON_DIGEST_MISMATCH
+    assert capture.persisted_at is None
+
+
+# --- one object per store (archiver#380 D4): captures kept in their own bucket ---
+
+
+@pytest.mark.asyncio
+async def test_a_capture_kept_in_the_captures_bucket_stamps_only_that_store(session, revision):
+    """Identical bytes in another store are another object: the stamp stays in its store."""
+    capture = await _capture(session, temp=CAPTURES_TEMP)
+    twin = await _capture(session, url="https://example.com/cap-twin", temp=CAPTURES_TEMP)
+    legacy = await _capture(session, url="https://example.com/cap-legacy")
+    command = await _capture_persist(session, capture)
+
+    await apply_persisted(
+        session,
+        command_id=command.command_id,
+        content_fingerprint=DIGEST,
+        size_bytes=1,
+        occurred_at=OCCURRED_AT,
+    )
+
+    for row in (capture, twin, legacy, revision):
+        await session.refresh(row)
+    assert capture.persisted_at == OCCURRED_AT
+    assert twin.persisted_at == OCCURRED_AT
+    assert legacy.persisted_at is None
+    assert revision.persisted_at is None
+
+
+@pytest.mark.asyncio
+async def test_a_revision_persist_does_not_stamp_a_capture_in_the_captures_bucket(
+    session, revision
+):
+    capture = await _capture(session, temp=CAPTURES_TEMP)
+    legacy = await _capture(session, url="https://example.com/cap-legacy")
+    command = await _command(session, revision)
+
+    await apply_persisted(
+        session,
+        command_id=command.command_id,
+        content_fingerprint=DIGEST,
+        size_bytes=1,
+        occurred_at=OCCURRED_AT,
+    )
+
+    for row in (capture, legacy, revision):
+        await session.refresh(row)
+    assert revision.persisted_at == OCCURRED_AT
+    assert legacy.persisted_at == OCCURRED_AT
     assert capture.persisted_at is None

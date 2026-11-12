@@ -154,9 +154,8 @@ recorded; the command closes **only** when `terminal` is true.
 
 - **Correlate on `command_id` only.** Neither fact carries a revision or source
   id, because the stored object belongs to its digest. A success stamps
-  `persisted_at` on **every** `source_revisions` row whose `blob_fingerprint`
-  matches, and on every `capture_commands` row whose `content_fingerprint` does
-  (archiver#380 slice B), whichever of them occasioned the command.
+  `persisted_at` on **every** row carrying the digest in the command's store
+  (archiver#380 D4, `permanent_store`), whichever of them occasioned it.
 - **`persisted_at` is a minimum.** `occurred_at` is a publish time, an upper
   bound on the write, and redeliveries or later commands re-emit with later
   stamps. Each success lowers it or leaves it; arrival order does not matter.
