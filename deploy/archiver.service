@@ -133,11 +133,11 @@ SetCredential=processor-text-reader:\n
 # archiver-capture-reader, objectViewer on that bucket alone - never the
 # buckets raw blobs live in (content.blobs). The processor reader's shape: a
 # credential WITH the empty fallback, so a missing key starts the service with
-# images unavailable and one WARNING. Dark until the operator provisions the
-# bucket, the grant and the key (CannObserv/replicator#189); the flip uncomments
-# both lines.
-#LoadCredential=capture-reader:/etc/archiver/capture-reader.json
-#SetCredential=capture-reader:\n
+# images unavailable and one WARNING. Flipped 2026-11-12, once the bucket, the
+# grant and the key were provisioned (CannObserv/replicator#189); rollback
+# re-comments both lines.
+LoadCredential=capture-reader:/etc/archiver/capture-reader.json
+SetCredential=capture-reader:\n
 
 # Where notification and API links point (archiver#367): the origin people open,
 # never an internal address. A line in /etc/archiver/.env would override this one
