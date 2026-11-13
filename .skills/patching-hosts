@@ -92,5 +92,10 @@ exception not-restarter:archiver-bus-health.service 2027-05-31 a WARN-only outbo
 exception not-restarter:archiver-drift.service 2027-05-31 asks GitHub whether live lags main and checks in (src.core.drift); starts nothing
 exception not-restarter:archiver-pm-org-refresh.service 2027-05-31 one Power Map follower sweep (src.core.tools.refresh_orgs); starts nothing
 exception not-restarter:archiver-temporal-boundary.service 2027-05-31 one temporal-profile evaluation (src.core.tools.temporal_boundary); starts nothing
+# Dormant since the image was provisioned, never used here: both pruned
+# disable -> savepoint -> purge, the owner's 7-day soak (#375). Drift from the
+# image while it ships them; address-validator purged nginx the same way.
+exception disabled:nginx 2026-11-20 exeuntu image leftover, inactive 44 days, never served; masked 2026-11-13 (#375)
+exception disabled:docker 2026-11-20 exeuntu image leftover, no containers, inactive 44 days; docker group is root-equivalent; masked 2026-11-13 (#375)
 # No image-owner line: this repo is public and the image repo is not
 # (gregoryfoster/skills#350).
