@@ -48,6 +48,10 @@ addopts = "-v --tb=short"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
+# The host disk GC's repo-side knob (#440; maintaining-host-disk repo-knobs.md):
+# one run's basetemp, failed tests' directories only.
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
 filterwarnings = [
     "error::DeprecationWarning",
 ]

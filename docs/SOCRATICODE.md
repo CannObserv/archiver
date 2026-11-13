@@ -165,6 +165,13 @@ against the same `co-index` store. That lags `@latest` by a minor release, which
 the daily health check reports as a defect by design; re-pin as a cohort
 decision, not from here alone.
 
+**The host disk GC keeps the session's pinned tree** (#440): its `npx` tier
+prunes `~/.npm/_npx` except what a pinned spec resolves to, read from the
+machine setting below and from the files its config's `npx_spec_files` names,
+here `.claude/settings.json`. Move the declaration out of that file and the
+line in `/etc/cannobserv/disk-gc/disk-gc.conf` moves with it. `~/.socraticode/pin`
+is outside every tier.
+
 **The settings block declares; it does not deliver.** On watcher, notifier and
 address-validator the block reached the server's environment but not its
 argv: Claude Code expanded the plugin's args first
