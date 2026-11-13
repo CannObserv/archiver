@@ -219,6 +219,7 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 | `coordinating-epics` | coordinate the epic, burn down, check-in, I finished #N, next issue. Serial, operator-paced; the coordinator writes no code (epic #357) |
 | `using-mayfly-chat` | mayfly, open a channel, join the channel, chat with `<repo>`, agent chat. Never commit a channel URL; nothing here guards it, so run the skill's leak check first |
 | `maintaining-host-disk` | disk GC, root disk is full, disk headroom, update the disk GC, VS Code server builds. Every host step needs the operator's approval in this host's session; this host's adoption record is #440. Repo-side: pytest's basetemp retention in `pyproject.toml`, and the SocratiCode pin the GC keeps ([SOCRATICODE.md](SOCRATICODE.md)) |
+| `patching-hosts` | patch the host, OS updates, security updates, apply updates, unattended-upgrades, needrestart, is this host patched. The host's knob is `.skills/patching-hosts`, held by `tests/deploy/test_patching_knob.py`; the apply, each restart and the reboot need the operator's approval in this host's session. This host's adoption record is #375 |
 | `using-superpowers` | meta - when to invoke superpowers skills |
 | `socraticode` (codebase MCP) | see **Code Exploration Policy** in `AGENTS.md` |
 | `init-socraticode` | install/re-index SocratiCode; owns its two SessionStart hooks |
