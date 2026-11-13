@@ -1,0 +1,96 @@
+# patching-hosts host knob (#375). Grammar: skills/patching-hosts/references/knob.md
+# (the vendored skill). The skill reads this file and never writes it. Times
+# are UTC. A malformed line makes the host report-only until it is fixed.
+# Held by tests/deploy/test_patching_knob.py: change a decision there first.
+
+class production
+posture scheduled
+
+# --- when -----------------------------------------------------------------
+# The owner's window, weekly, Sun 22:00-24:00 Pacific (decided 2026-11-13,
+# #375): the one Sunday-evening slot clear of every other cohort host's
+# window and of this host's quiet ranges. A knob time is UTC and the weekday
+# is the UTC day the range starts, so it is Monday here: Sun 22:00 PST is
+# Mon 06:00Z. Fixed in UTC, it reads Sun 23:00-01:00 PDT from 2027-03-14;
+# move it then if the slot is meant to hold in Pacific time. Every step's
+# whole span, the bulk's including the reboot, must fit inside it.
+cadence weekly
+window Mon 06:00-08:00
+
+# archiver-backup.timer: 03:17 UTC daily, RandomizedDelaySec=10min,
+# AccuracySec=1min; the dump and upload take about a second. Outside the
+# window: kept so that widening the window can't put a step on the backup.
+quiet 03:15-03:45
+# cannobserv-disk-gc.timer, the cohort disk GC (#440): 05:15 UTC daily,
+# RandomizedDelaySec=30min, AccuracySec unset (1min). Its run takes minutes;
+# the range keeps 14 of them past the last start (05:46). Its sensor, every
+# 10 min, only reads; neither unit is in /etc/systemd/system, so the
+# restarter scan doesn't read them.
+quiet 05:15-06:00
+# archiver-temporal-boundary.timer: 00:05 UTC daily, about a second. Its
+# Persistent= catches up a run missed while down, never one a restart killed.
+quiet 00:00-00:10
+
+# --- the service ----------------------------------------------------------
+# One process: the API, the dashboard, the bus consumers and the outbox
+# publisher. Its restart is a full outage; the outbox catches the bus up.
+service archiver.service
+
+# The timer services running now: backup, bus-health, drift, pm-org-refresh,
+# temporal-boundary, every one a Type=oneshot named archiver-*.service. The
+# hourly two run on OnUnitActiveSec= and drift through the hour, so no quiet
+# line can hold them: this gate catches them at each step. Reads unit state
+# only, as exedev: never /etc/archiver/.env (root 0600, #339).
+inflight systemctl list-units 'archiver-*.service' --state=activating,active,deactivating --no-legend --plain | grep -v '^archiver\.service' | wc -l
+
+# Loopback: uvicorn binds 0.0.0.0:8000. /health is unauthenticated and
+# DB-free; an authenticated GET on 8000 upserts AppUser on production.
+health curl -sf -m5 http://127.0.0.1:8000/health | jq -e '.status == "ok"'
+
+# After a Postgres restart: the read role (#348) is served, and the outbox
+# publisher reached the database again, with nothing older than 2 minutes
+# left unpublished. Proves little when nothing was written in the meantime.
+recovery psql -d archiver -XAtc "select count(*) from information.changes_outbox where published_at is null and dead_lettered_at is null and created_at < now() - interval '2 minutes'" | grep -qx 0
+
+# --- the data store -------------------------------------------------------
+# The cluster holds archiver, archiver_dev and archiver_test. Only archiver
+# is production data; the other two are excepted below rather than declared,
+# because archiver-backup.service dumps archiver alone (--database archiver).
+datastore postgres postgresql@16-main archiver
+# The nightly dump to GCS (#233), create-only, checked in to co-status: the
+# recovery point starts it and needs a fresh success instead of a second dump.
+backup archiver-backup.service postgresql@16-main
+
+# --- third-party origins --------------------------------------------------
+# Each followed origin is scoped by a tracked pin file, installed under
+# /etc/apt/preferences.d/ (deploy/apt-preferences.d/, deploy/README.md).
+# NodeSource: nodejs, for SocratiCode's npx MCP server and the npm tooling.
+origin deb.nodesource.com follow
+# Tailscale carries the bus to broker and the co-status check-ins. Its
+# postinst restarts tailscaled, a bus outage the outbox absorbs: its own
+# step. Its own auto-update goes off on the node and for the tailnet in
+# #375's host steps; the probe reads the node's at every run.
+origin pkgs.tailscale.com follow
+hold tailscale tailscale-archive-keyring tailscale
+
+# --- language dependencies -----------------------------------------------
+# Every unit runs from /srv/archiver/live, a release built from this repo's
+# uv.lock (#330), with no git remote for the probe to read.
+owner /srv/archiver/live self
+
+# --- callers --------------------------------------------------------------
+# Replicator reads through archiver-client. Watcher makes no HTTP call either
+# way: the edge is bus-only (#142). CannObserv/cli resolves with no token
+# here; if it calls this host, it is a private caller, told by hand.
+caller CannObserv/replicator
+
+# --- exceptions -----------------------------------------------------------
+exception database:archiver_test 2027-05-31 the suite's database (tests/conftest.py), its schema dropped every session; nothing in it to recover
+exception database:archiver_dev 2027-05-31 the dev server's database (scripts/dev_server.sh), rebuilt on demand; nothing in it to recover
+exception not-restarter:archiver-backup.service 2027-05-31 archiver_backup running pg_dump, pg_restore and the GCS upload (src.core.backup); starts nothing
+exception not-restarter:archiver-bus-health.service 2027-05-31 a WARN-only outbox and stream probe (src.core.bus_health); starts nothing
+exception not-restarter:archiver-drift.service 2027-05-31 asks GitHub whether live lags main and checks in (src.core.drift); starts nothing
+exception not-restarter:archiver-pm-org-refresh.service 2027-05-31 one Power Map follower sweep (src.core.tools.refresh_orgs); starts nothing
+exception not-restarter:archiver-temporal-boundary.service 2027-05-31 one temporal-profile evaluation (src.core.tools.temporal_boundary); starts nothing
+# No image-owner line: this repo is public and the image repo is not
+# (gregoryfoster/skills#350).
