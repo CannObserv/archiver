@@ -394,6 +394,8 @@ deploy/                        README.md (install instructions) + systemd units,
                                archiver.service +
                                needrestart.conf.d/archiver.conf (list restarts, never
                                perform them; archiver#278) +
+                               apt-preferences.d/ (scope the origins the patching
+                               knob follows; archiver#375) +
                                the memory reservation (archiver#237):
                                99-archiver-memory.conf (sysctl; vm.swappiness for
                                the 4 G /swapfile, archiver#286),
@@ -424,6 +426,8 @@ skills/                        Agent skills (committed overrides + symlinks → 
 skills-vendor/                 Git submodules for external skill repos
 .skills/doctor.sh              Committed skill-symlink doctor (real file, not a
                                symlink) — see SKILLS.md "SessionStart Hooks"
+.skills/patching-hosts         The host's patching knob (window, data store, origins);
+                               held by tests/deploy/test_patching_knob.py (#375)
 .claude/skills/                Claude Code skill discovery (symlinks → ../../skills/<name>)
 .github/, .pre-commit-config.yaml
                                CI jobs, Dependabot, pre-commit hooks: CONVENTIONS.md
