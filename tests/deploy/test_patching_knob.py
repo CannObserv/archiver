@@ -309,7 +309,8 @@ def test_the_backup_stands_in_for_the_archiver_database_alone() -> None:
 @pytest.mark.parametrize("unit", _timer_services())
 def test_each_timer_service_is_an_unprivileged_non_restarter(unit: str) -> None:
     """The exception is the owner's word; these are the facts it rests on.
-    A unit that gains root, or a module that gains ``systemctl``, fails here
+    A unit that gains root, or runs a module outside ``src/`` (which
+    ``test_no_module_under_src_starts_a_unit`` doesn't read), fails here
     before the knob goes on vouching for it."""
     excepted = {words[0] for words in _named("exception")}
     assert f"not-restarter:{unit}" in excepted
@@ -322,8 +323,26 @@ def test_each_timer_service_is_an_unprivileged_non_restarter(unit: str) -> None:
             assert "systemctl" not in line, f"{unit}: {directive}= calls systemctl"
     for start in starts:
         module = start.split("-m ", 1)[1].split()[0]
-        source = (REPO_ROOT / Path(*module.split("."))).with_suffix(".py").read_text()
-        assert "systemctl" not in source, f"{unit} runs something that calls systemctl"
+        source = (REPO_ROOT / Path(*module.split("."))).with_suffix(".py")
+        assert source.is_file(), f"{unit} runs {module}, which isn't under src/"
+
+
+#: What starting or restarting a unit looks like from Python: the CLI, or
+#: systemd's own D-Bus API, which needs no ``systemctl`` at all.
+_STARTS_A_UNIT = re.compile(r"systemctl|org\.freedesktop\.systemd1|(?:Start|Restart|Reload)Unit")
+
+
+def test_no_module_under_src_starts_a_unit() -> None:
+    """Each timer service's exception rests on its whole import graph, not
+    just its entry module: a helper it imports that gains a restart would
+    make it a restarter. Nothing under ``src/`` starts a unit, so read all of
+    it, and the exceptions stay true whatever each module comes to import."""
+    found = sorted(
+        str(path.relative_to(REPO_ROOT))
+        for path in (REPO_ROOT / "src").rglob("*.py")
+        if _STARTS_A_UNIT.search(path.read_text())
+    )
+    assert found == [], f"these may start a unit, so a timer running them is a restarter: {found}"
 
 
 def test_no_restarter_is_declared() -> None:
