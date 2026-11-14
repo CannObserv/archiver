@@ -66,6 +66,8 @@ UNIT_ROOT=/srv/archiver/live
 # reload or a Postgres restart, by hand.
 HOST_CONFIGS=(
   "99-archiver-memory.conf=sysctl.d/99-archiver-memory.conf"
+  "apt-preferences.d/nodesource.pref=apt/preferences.d/nodesource.pref"
+  "apt-preferences.d/tailscale.pref=apt/preferences.d/tailscale.pref"
   "needrestart.conf.d/archiver.conf=needrestart/conf.d/archiver.conf"
   "postgresql/16/main/environment=postgresql/16/main/environment"
   "postgresql@16-main.service.d/10-memory.conf=systemd/system/postgresql@16-main.service.d/10-memory.conf"

@@ -1,0 +1,15 @@
+# #375: scope NodeSource's apt origin to nodejs, for SocratiCode's npx MCP
+# server (docs/SOCRATICODE.md) and the repo's npm tooling. Installed as
+# /etc/apt/preferences.d/nodesource.pref. The knob follows the origin in the
+# maintenance lane (`origin deb.nodesource.com follow`), and a followed origin
+# left at 500 ties Ubuntu's priority: an unpinned NodeSource replaced Ubuntu's
+# nodejs on noble (patching-hosts references/policy.md, Two lanes). The
+# catch-all goes below 500; the package it was added for, above.
+
+Package: *
+Pin: origin deb.nodesource.com
+Pin-Priority: 100
+
+Package: nodejs
+Pin: origin deb.nodesource.com
+Pin-Priority: 600
