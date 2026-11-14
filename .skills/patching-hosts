@@ -80,8 +80,9 @@ owner /srv/archiver/live self
 
 # --- callers --------------------------------------------------------------
 # Replicator reads through archiver-client. Watcher makes no HTTP call either
-# way: the edge is bus-only (#142). CannObserv/cli resolves with no token
-# here; if it calls this host, it is a private caller, told by hand.
+# way: the edge is bus-only (#142). A private repo's service that calls this
+# host gets no line, since one would publish its name (knob.md): the run
+# tells it by hand.
 caller CannObserv/replicator
 
 # --- exceptions -----------------------------------------------------------

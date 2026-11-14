@@ -361,6 +361,9 @@ def test_tailscale_restarts_in_its_own_step() -> None:
 def test_the_one_caller_is_public_and_no_private_name_is_published() -> None:
     assert _named("caller") == [["CannObserv/replicator"]]
     assert _named("image-owner") == []
+    # Nor in a comment: the knob is public, so a name there is published too.
+    named = set(re.findall(r"CannObserv/[\w.-]+", KNOB.read_text()))
+    assert named == {"CannObserv/replicator"}, named
 
 
 @pytest.mark.parametrize("name", sorted(name for name, _ in FOLLOWED.values()))
