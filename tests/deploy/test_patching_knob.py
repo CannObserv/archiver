@@ -37,6 +37,7 @@ import json
 import math
 import re
 import subprocess
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -52,6 +53,8 @@ GC_TIMER_DROPIN = Path("/etc/systemd/system/cannobserv-disk-gc.timer.d")
 PINS = DEPLOY / "apt-preferences.d"
 INSTALLED_PINS = Path("/etc/apt/preferences.d")
 HOST = "co-registrar"
+#: Prune stages whose review-by date is a soak, not a deadline (pruning.md).
+PRUNE_STAGES = ("disabled:", "removed:")
 WINDOW = ["Mon", "06:00-08:00"]
 
 #: Each followed origin's pin file, and the packages it was added for.
@@ -150,18 +153,21 @@ def _timer_services() -> list[str]:
     return sorted(f"{timer.stem}.service" for timer in DEPLOY.glob("*.timer"))
 
 
-def test_the_knob_reads_clean() -> None:
+def _read_knob(*extra: str) -> dict:
     if not READ_KNOB.is_file():
         if _on_host():
             pytest.fail(f"{READ_KNOB} missing on the host: git submodule update --init")
         pytest.skip("patching-hosts submodule not initialised")
     out = subprocess.run(
-        ["bash", str(READ_KNOB), "--config", str(KNOB), "--host", HOST],
+        ["bash", str(READ_KNOB), "--config", str(KNOB), "--host", HOST, *extra],
         capture_output=True,
         text=True,
         check=True,
     ).stdout
-    knob = json.loads(out)
+    return json.loads(out)
+
+
+def _assert_clean(knob: dict) -> None:
     assert knob["findings"] == []
     assert knob["report_only"] is False, knob["report_only_reasons"]
     assert knob["class"]["value"] == "production"
@@ -174,6 +180,26 @@ def test_the_knob_reads_clean() -> None:
     # The reader's reason is the whole raw reason: no comment cut one short.
     raw = {words[0]: " ".join(words[2:]) for words in _named("exception")}
     assert {e["what"]: e["reason"] for e in knob["exception"]} == raw
+
+
+def test_the_knob_reads_clean() -> None:
+    _assert_clean(_read_knob())
+
+
+def test_a_prune_soak_ending_does_not_turn_the_knob_red() -> None:
+    """A prune stage's review-by date is its soak: once it passes, the probe
+    reports the component again, which is the prompt for the next stage
+    (the skill's pruning.md). The repo's suite must not go red on that date,
+    for every unrelated change, while the next stage waits for its window."""
+    soaks = [
+        date.fromisoformat(words[1])
+        for words in _named("exception")
+        if words[0].startswith(PRUNE_STAGES)
+    ]
+    if not soaks:
+        pytest.skip("no prune stage declared")
+    today = (max(soaks) + timedelta(days=1)).isoformat()
+    _assert_clean(_read_knob("--today", today))
 
 
 def test_no_exception_reason_is_cut_short_by_a_comment() -> None:
