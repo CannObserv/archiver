@@ -29,6 +29,9 @@ everywhere, plus the installed GC timer and apt pins on the host:
   make it true.
 - **Each followed origin is scoped by a tracked pin file**, catch-all below
   500 and its packages above (the skill's ``policy.md``, Two lanes).
+- **A prune stage's soak ending stays green**: its review-by date is the
+  probe's prompt for the next stage, not a deadline for every change's CI.
+  Every other expired exception is red.
 - **No ``image-owner``, and no private ``caller``**: this repo is public
   (gregoryfoster/skills#350).
 """
@@ -168,7 +171,13 @@ def _read_knob(*extra: str) -> dict:
 
 
 def _assert_clean(knob: dict) -> None:
-    assert knob["findings"] == []
+    """Clean but for a prune stage's soak ending, which the probe reports."""
+    soaking = {e["line"] for e in knob["exception"] if e["what"].startswith(PRUNE_STAGES)}
+    assert [
+        f
+        for f in knob["findings"]
+        if not (f["kind"] == "expired-exception" and f["line"] in soaking)
+    ] == []
     assert knob["report_only"] is False, knob["report_only_reasons"]
     assert knob["class"]["value"] == "production"
     assert knob["posture"]["value"] == "scheduled"
@@ -176,7 +185,9 @@ def _assert_clean(knob: dict) -> None:
     assert [(w["weekday"], w["week"], w["start"], w["end"]) for w in knob["window"]] == [
         ("Mon", None, "06:00", "08:00")
     ]
-    assert not any(e["expired"] for e in knob["exception"])
+    assert not any(
+        e["expired"] for e in knob["exception"] if not e["what"].startswith(PRUNE_STAGES)
+    )
     # The reader's reason is the whole raw reason: no comment cut one short.
     raw = {words[0]: " ".join(words[2:]) for words in _named("exception")}
     assert {e["what"]: e["reason"] for e in knob["exception"]} == raw
