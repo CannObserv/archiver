@@ -646,6 +646,10 @@ async def put_org(
     and fires ``replicationChanged`` from ``org``.
     """
     item = await _resolve_item(item_id, session)
+    # End the read before Power Map (#405). link_org's own existence check then
+    # finds `item` in the identity map without SQL, so nothing reopens a
+    # transaction until it locks the row after the wait.
+    await session.commit()
     chosen = pm_org_id.strip() or None
     label = q.strip() or chosen
 

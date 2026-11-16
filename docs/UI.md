@@ -73,7 +73,8 @@ Identity is `external_id`; email is descriptive, **not unique** (#177 - the
 proxy doesn't guarantee it, and enforcing it locked colliding operators out
 with a 500). Don't reintroduce a unique constraint or key any lookup on email.
 
-**The steady state is a read.** One indexed SELECT on `external_id`, no write.
+**The steady state is a read.** One indexed SELECT on `external_id`, no write,
+committed so no transaction outlives it (below).
 Only first sight or a real email change reaches the `INSERT … ON CONFLICT
 (external_id) DO UPDATE`, which keeps concurrent first-logins from racing
 (#177) and commits inside the dependency - `get_db_session` doesn't commit and
@@ -92,6 +93,33 @@ is the accepted cost of not letting a header pair adopt an existing identity.
 
 The gate is universal, so the route entries in [PAGES.md](PAGES.md) do not repeat
 it: assume any dashboard route redirects 307 when unauthenticated.
+
+### No transaction across an outbound wait (#405)
+
+**Every route body starts with no transaction open.** `get_db_session` never
+commits. So the gate's SELECT used to leave a transaction open until the
+session closed, holding `ACCESS SHARE` on `app_users` through every wait in
+the route. A deploy migration that needs `ACCESS EXCLUSIVE` there gives up
+after `MIGRATION_LOCK_TIMEOUT` (5 s), so viewing a page could fail a deploy.
+Measured on `archiver_dev`: `idle in transaction` plus the lock for the whole
+of a stalled Power Map search. The gate now commits its read too.
+- **Commit, never roll back.** The shared factory sets `expire_on_commit=False`,
+  so `user` stays loaded for the templates. A rollback expires it, and the next
+  attribute read raises `MissingGreenlet`.
+- **A route that reads and then waits ends its read first** with
+  `await session.commit()`. The read is read-only, so the commit writes
+  nothing. The waits are Power Map, the fetch driver, the broker, Notifier,
+  GCS and `asyncio.to_thread`. Today that means `PUT /info-items/{id}/org`
+  (before `link_org`'s Power Map call), the Bus triage page (before the DLQ
+  listings), the notification test-send (before compose and dispatch), and the
+  capture image (before its GCS read).
+- **No other dependency takes the session.** A dependency that read the
+  database would reopen a transaction before the body runs.
+
+`tests/dashboard/test_transaction_scope.py` pins all three rules. It has a
+structural walk over every route's dependencies, and one test per wait that
+records `session.in_transaction()` at the moment of the wait. A new wait gets
+a test there.
 
 ### Writes must be same-origin (#404)
 
