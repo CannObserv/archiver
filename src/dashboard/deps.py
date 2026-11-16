@@ -41,9 +41,15 @@ def _origin(scheme: str, netloc: str) -> Origin | None:
 
 
 def _parse_origin_header(value: str) -> Origin | None:
-    """An ``Origin`` header as an origin; ``"null"`` and anything malformed is ``None``."""
+    """An ``Origin`` header as an origin; ``"null"`` and anything malformed is ``None``.
+
+    A serialized origin is ``scheme://host[:port]`` and nothing else, so a path,
+    userinfo, query or fragment marks a value no browser sent - refused rather
+    than handed to ``urlsplit``, which would read our host out of
+    ``https://x@<ours>``.
+    """
     scheme, sep, netloc = value.strip().partition("://")
-    if not sep or "/" in netloc:
+    if not sep or any(c in netloc for c in "/@?#"):
         return None
     return _origin(scheme, netloc)
 
