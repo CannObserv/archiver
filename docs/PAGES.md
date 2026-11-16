@@ -9,7 +9,8 @@ file refers to by name. Alpine components are
 catalogued in [COMPONENTS.md](COMPONENTS.md).
 
 Every route below is auth-gated, and every write route is also same-origin
-checked; see UI.md § Authentication. The entries do not repeat either.
+checked; see UI.md § Authentication. The entries do not repeat either, nor the
+transaction rule (UI.md § No transaction across an outbound wait).
 
 Every page shares `base.html`'s topbar. Its Sign out posts to `/__exe.dev/logout`
 with `hx-boost="false"`, because the proxy answers that path itself
