@@ -80,6 +80,10 @@ def test_without_sec_fetch_site_a_matching_origin_passes():
         "null",  # opaque: sandboxed frame, data: URL
         "not a url",
         "https://co-registrar.exe.xyz:notaport",
+        # Not serialized origins, though urlsplit reads ours out of each (CR 3).
+        "https://x@co-registrar.exe.xyz:8001",
+        "https://co-registrar.exe.xyz:8001?",
+        "https://co-registrar.exe.xyz:8001#",
     ],
 )
 def test_without_sec_fetch_site_any_other_origin_is_refused(origin):
