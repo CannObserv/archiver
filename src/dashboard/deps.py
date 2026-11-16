@@ -167,7 +167,7 @@ async def get_dashboard_user(
     rollback: the factory's ``expire_on_commit=False`` keeps ``user``'s
     attributes loaded for the templates, where a rollback expires them and the
     next read raises ``MissingGreenlet``. A route that reads and then waits ends
-    its own read the same way. No other dependency takes the session. Both
+    its own read the same way. No other dependency takes the session. These
     rules are pinned by ``tests/dashboard/test_transaction_scope.py``.
     """
     external_id = request.headers.get("X-ExeDev-UserID")
