@@ -131,8 +131,9 @@ that loop.
 - `GET`. No dashboard `GET` writes, except the visitor's own `AppUser` row.
 - Script injected into our own origin (a synchronizer token would cover that,
   option B on #404).
-- The exe.dev logout, which posts to `/__exe.dev/logout` and never reaches the
-  app.
+- The exe.dev logout. It posts to `/__exe.dev/logout`, which the proxy
+  answers without reaching the app (measured on 8001), and it's unboosted
+  ([HTMX.md](HTMX.md) § Boosted navigation).
 
 ---
 

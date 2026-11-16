@@ -11,6 +11,10 @@ catalogued in [COMPONENTS.md](COMPONENTS.md).
 Every route below is auth-gated; see UI.md § Authentication. The entries do not
 repeat it.
 
+Every page shares `base.html`'s topbar. Its Sign out posts to `/__exe.dev/logout`
+with `hx-boost="false"`, because the proxy answers that path itself
+([HTMX.md](HTMX.md) § Boosted navigation).
+
 > **AGENTS.md enforcement:** update this file in the same commit as any Jinja2
 > template change or new/changed dashboard route.
 

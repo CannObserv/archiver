@@ -36,7 +36,9 @@
     <nav class="topbar__actions" aria-label="User actions">
       <span class="topbar__user" aria-label="Signed in as {{ user.email }}">{{ user.email }}</span>
       <button class="btn btn--ghost theme-toggle" data-theme-toggle aria-label="Colour scheme: system">◐</button>
-      <form method="POST" action="/__exe.dev/logout">
+      {# Not boosted: the proxy answers the logout itself, and an XHR to it
+         fails ("Could not reach the server") - #404 verification. #}
+      <form method="POST" action="/__exe.dev/logout" hx-boost="false">
         <button type="submit" class="btn btn--ghost">Sign out</button>
       </form>
     </nav>

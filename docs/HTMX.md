@@ -11,6 +11,8 @@ these patterns updates this file in the same commit.
 
 `<body hx-boost="true">` - all in-dashboard `<a>` links and form submissions use HTMX fetch automatically (no full page reload). HTMX swaps the `<body>` and updates `<title>`.
 
+**A form the exe.dev proxy answers opts out with `hx-boost="false"`.** The topbar's Sign out posts to `/__exe.dev/logout`, which never reaches the app. Boosted, that XHR failed with "Could not reach the server" and left the operator signed in (#404, measured on 8001). Any other `/__exe.dev/` link or form needs the same opt-out.
+
 ## Inline validation errors (`hx-target-422`)
 
 `<body hx-ext="response-targets">` enables the vendored
