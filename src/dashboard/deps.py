@@ -3,15 +3,126 @@
 import hashlib
 import secrets
 from datetime import UTC, datetime
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from fastapi import Depends, Request
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import URL, Headers
 
 from src.api.deps import get_db_session
+from src.api.errors import raise_envelope
+from src.core.logging import get_logger
 from src.core.models import AppUser
+
+logger = get_logger(__name__)
+
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+_REFUSED_MESSAGE = (
+    "This change was refused because it did not come from a dashboard page at this "
+    "same origin (address and port). Nothing was changed. Reload the page and try again."
+)
+
+Origin = tuple[str, str, int]
+
+
+def _origin(scheme: str, netloc: str) -> Origin | None:
+    """``(scheme, host, port)`` with the default port filled in; ``None`` if unparseable."""
+    try:
+        parts = urlsplit(f"{scheme.strip().lower()}://{netloc.strip()}")
+        port = parts.port
+    except ValueError:
+        return None
+    if parts.scheme not in _DEFAULT_PORTS or not parts.hostname:
+        return None
+    return parts.scheme, parts.hostname, port or _DEFAULT_PORTS[parts.scheme]
+
+
+def _parse_origin_header(value: str) -> Origin | None:
+    """An ``Origin`` header as an origin; ``"null"`` and anything malformed is ``None``.
+
+    A serialized origin is ``scheme://host[:port]`` and nothing else, so a path,
+    userinfo, query or fragment marks a value no browser sent - refused rather
+    than handed to ``urlsplit``, which would read our host out of
+    ``https://x@<ours>``.
+    """
+    scheme, sep, netloc = value.strip().partition("://")
+    if not sep or any(c in netloc for c in "/@?#"):
+        return None
+    return _origin(scheme, netloc)
+
+
+def _our_origin(headers: Headers, url: URL) -> Origin | None:
+    """The origin the browser asked for.
+
+    The exe.dev proxy names it in ``X-Forwarded-Proto`` + ``X-Forwarded-Host``
+    (port included, measured 2026-11-16 on #404), and uvicorn never applies the
+    latter. Without them, the request's own URL - which starlette builds from
+    ``Host``, or from ``scope["server"]`` when ``Host`` is invalid, never from
+    the poisoned authority (#420's note).
+    """
+    forwarded_host = headers.get("x-forwarded-host")
+    if forwarded_host:
+        proto = headers.get("x-forwarded-proto") or url.scheme
+        return _origin(proto.split(",")[0], forwarded_host.split(",")[0])
+    return _origin(url.scheme, url.netloc)
+
+
+def same_origin_refusal(method: str, headers: Headers, url: URL) -> str | None:
+    """Why an unsafe request is not same-origin, or ``None`` when it may proceed (#404).
+
+    Same-*origin* (scheme, host and port), never same-*site*: the proxy forwards
+    every port of this VM under one registrable domain, so a page on any other
+    port is ``same-site`` and the login cookie rides along with it.
+
+    * Safe methods pass: no dashboard ``GET`` changes state beyond the login's
+      own ``AppUser`` row.
+    * ``Sec-Fetch-Site`` decides alone when present. The browser sets it, from
+      the URL it requested, so nothing here has to reconstruct our origin.
+      Only ``same-origin`` passes; ``none`` (typed or bookmarked) is refused.
+    * Without it, ``Origin`` must equal ours (``"null"`` never does).
+    * With neither, the request passes - curl, scripts and tests send neither,
+      and no browser that carries the cookie omits both (operator decision,
+      2026-11-16).
+    """
+    if method.upper() in _SAFE_METHODS:
+        return None
+    site = headers.get("sec-fetch-site")
+    if site is not None:
+        return None if site.strip().lower() == "same-origin" else f"sec-fetch-site={site}"
+    origin = headers.get("origin")
+    if origin is None:
+        return None
+    theirs = _parse_origin_header(origin)
+    if theirs is None or theirs != _our_origin(headers, url):
+        return "origin-mismatch"
+    return None
+
+
+async def require_same_origin(request: Request) -> None:
+    """Refuse an unsafe dashboard request that is not same-origin: a 403 page, logged.
+
+    Mounted on every dashboard router by ``register_dashboard``, so it resolves
+    before each route's own dependencies - a refused request opens no session
+    and reaches no auth upsert. Pinned by ``tests/dashboard/test_same_origin_guard.py``.
+    """
+    reason = same_origin_refusal(request.method, request.headers, request.url)
+    if reason is None:
+        return
+    logger.warning(
+        "Dashboard write refused: not same-origin",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "reason": reason,
+            "sec_fetch_site": request.headers.get("sec-fetch-site"),
+            "origin": request.headers.get("origin"),
+            "forwarded_host": request.headers.get("x-forwarded-host"),
+        },
+    )
+    raise_envelope(403, "auth", _REFUSED_MESSAGE)
 
 
 class DashboardAuthRequired(Exception):

@@ -93,6 +93,48 @@ is the accepted cost of not letting a header pair adopt an existing identity.
 The gate is universal, so the route entries in [PAGES.md](PAGES.md) do not repeat
 it: assume any dashboard route redirects 307 when unauthenticated.
 
+### Writes must be same-origin (#404)
+
+**The login cookie is the dashboard's only credential, and a cross-port page
+can spend it.** Same-site means scheme plus registrable domain, with no port.
+`exe.xyz` is on the Public Suffix List, so every port of `co-registrar.exe.xyz`
+is one site. On 8001, a form and a `no-cors` fetch from a page on `:8002` both
+arrived logged in, carrying `Sec-Fetch-Site: same-site` (measured 2026-11-16).
+Any page served from another port, such as the dev server, a preview or a tool,
+can therefore submit to production on 8000.
+
+**`require_same_origin` (`src/dashboard/deps.py`) refuses every unsafe
+dashboard request that isn't same-*origin*** (scheme, host and port). Unsafe
+means `POST`, `PUT`, `PATCH` or `DELETE`.
+- **`Sec-Fetch-Site` decides when it's present.** Only `same-origin` passes, and
+  `same-site`, `cross-site` and `none` are refused. The browser sets this header
+  itself, from the URL it requested.
+- **Without it, `Origin` must equal ours.** Our origin is `X-Forwarded-Proto` +
+  `X-Forwarded-Host` (the proxy sends both, port included), or the request's
+  own URL when they're absent. Default ports are normalized, and `null` never
+  matches.
+- **A request with neither header passes.** curl, scripts and `TestClient`
+  send neither, and no browser that carries the cookie omits both (operator
+  decision, 2026-11-16).
+- **A refusal is a 403 on the dashboard's HTML error page**, logged as a WARNING
+  `Dashboard write refused: not same-origin`, with `reason`, `origin` and
+  `sec_fetch_site` attached.
+
+**It's mounted once,** as a router dependency in `register_dashboard`'s loop
+(`src/dashboard/main.py`). So it covers every route by construction, and it
+resolves before the route's auth and session: a refused request touches no
+database. `tests/dashboard/test_same_origin_guard.py` fails CI for any unsafe
+route outside `/api/` that the check doesn't reach. A new router goes through
+that loop.
+
+**Not covered:**
+- `GET`. No dashboard `GET` writes, except the visitor's own `AppUser` row.
+- Script injected into our own origin (a synchronizer token would cover that,
+  option B on #404).
+- The exe.dev logout. It posts to `/__exe.dev/logout`, which the proxy
+  answers without reaching the app (measured on 8001), and it's unboosted
+  ([HTMX.md](HTMX.md) § Boosted navigation).
+
 ---
 
 ## HTMX Patterns

@@ -2,14 +2,14 @@
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
-from src.dashboard.deps import DashboardAuthRequired
+from src.dashboard.deps import DashboardAuthRequired, require_same_origin
 from src.dashboard.errors import (
     dashboard_http_exception,
     dashboard_not_found,
@@ -59,6 +59,11 @@ def register_dashboard(app: FastAPI) -> None:
     # include_in_schema=False on every router: dashboard routes are HTML +
     # proxy-header auth, and clients/python/scripts/regen.sh generates the SDK
     # from app.openapi() - any leaked path becomes public client surface (#87).
+    # require_same_origin on every router: the login cookie is the only
+    # credential and rides a cross-port request from this VM, so each write must
+    # come from our own origin (#404). Mounted here, it covers routes by
+    # construction and resolves ahead of each route's auth and session; the
+    # walk in tests/dashboard/test_same_origin_guard.py catches a way around it.
     for router in (
         bus_triage_router,
         domains_router,
@@ -72,4 +77,6 @@ def register_dashboard(app: FastAPI) -> None:
         source_revisions_router,
         settings_router,
     ):
-        app.include_router(router, include_in_schema=False)
+        app.include_router(
+            router, include_in_schema=False, dependencies=[Depends(require_same_origin)]
+        )

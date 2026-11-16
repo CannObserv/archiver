@@ -242,3 +242,21 @@ async def test_dashboard_read_only_visit_persists_app_user(test_engine, committe
     assert second.status_code == 200
     assert moved is not None
     assert moved.email == "moved@example.com"
+
+
+@pytest.mark.asyncio
+async def test_sign_out_is_a_real_navigation_not_a_boosted_request(client):
+    """#404 verification: the proxy answers ``/__exe.dev/logout`` itself.
+
+    ``<body hx-boost="true">`` turned the Sign out form into an htmx XHR; the
+    proxy's reply never reached the app and the XHR failed, so Sign out showed
+    "Could not reach the server" and left the operator signed in (measured on
+    8001, 2026-11-16). Opting the form out of boost makes it a top-level POST.
+    """
+    response = await client.get(
+        "/dashboard/",
+        headers={"X-ExeDev-UserID": "ext-signout", "X-ExeDev-Email": "signout@example.com"},
+    )
+    assert response.status_code == 200
+    [form] = [line for line in response.text.splitlines() if 'action="/__exe.dev/logout"' in line]
+    assert 'hx-boost="false"' in form
