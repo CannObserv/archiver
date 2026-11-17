@@ -5,6 +5,50 @@ release; `AGENTS.md` carries only the auth rule and a pointer here. The bus
 contracts Archiver produces and consumes are in [BUS.md](BUS.md) and
 [BUS_CONSUMERS.md](BUS_CONSUMERS.md).
 
+## Authentication
+
+Every `/api/v1` route takes `X-API-Key`, checked by `require_api_key`
+(`src/api/deps.py`) against the SHA-256 in `information.api_keys`. An absent
+header is a 403, an unknown key a 401. Only `/health` and `/openapi.json` are
+open.
+
+### No transaction across an outbound wait (#521)
+
+**Every route body starts with no transaction open.** `require_api_key` runs
+on the request's own session, before every route, and stamps the key's
+`last_used_at`. `get_db_session` never commits, so that `UPDATE` used to stay
+uncommitted for the whole request:
+- **The key's row was locked.** The request also held `ROW EXCLUSIVE` on
+  `api_keys` across every Power Map, fetch and broker wait. A second request
+  on the same key queued behind it, and a deploy migration that needed
+  `api_keys` gave up after `MIGRATION_LOCK_TIMEOUT` (5 s).
+- **`last_used_at` didn't move on a read.** A route that never committed
+  rolled the write back at session close.
+
+Measured on `archiver_test`, with real connections and a stalled Power Map
+link (2026-11-17). Before the fix: `idle in transaction`, the key's row not
+lockable from outside, the second same-key `GET` waiting on it, and
+`last_used_at` still `NULL` after a `GET`. After: none of that, and the stamp
+lands. The dependency now commits its write.
+- **Commit, never roll back.** The shared factory sets `expire_on_commit=False`.
+- **A route that reads and then waits ends its read first** with
+  `await session.commit()`. Keep a reference to anything later code looks up
+  with `session.get`: the identity map references weakly, so a dropped object
+  is read again, which reopens the transaction. Today that's
+  `PUT /info-items/{id}/org`, before `link_org`'s Power Map call.
+  `POST /info-items` with `pm_org_id` reads nothing before its fetch.
+- **No other dependency takes the session.** One that read the database would
+  reopen a transaction before the body runs.
+
+`tests/api/test_transaction_scope.py` pins all three rules, in the shape of
+the dashboard's (#405, [UI.md](UI.md)). It has a structural walk over every
+`/api` route's dependencies, and one test per wait (Power Map, the fetch
+driver, the broker) that records `session.in_transaction()` at the moment of
+the wait. A new wait gets a test there.
+- **The route's last read stays open through the response send.** FastAPI
+  closes the session after the body goes out. That's #522's residual,
+  measured for the dashboard.
+
 ## Authoring tools + assignment endpoints (v2)
 
 The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-resource routes under `/api/v1/info-items/{id}/*`. All routes use `X-API-Key` auth (only `/health` and `/openapi.json` are open). Each route has an ergonomic SDK wrapper on `ArchiverClient` (v5.x; see [CHANGELOG.md](../CHANGELOG.md) for version history).

@@ -86,6 +86,18 @@ async def require_api_key(
 
     Raises 403 when the header is absent and 401 when no matching key is found.
     Updates last_used_at on the matched row.
+
+    **The write commits here, so every route body starts with no transaction
+    open (#521).** This resolves before every ``/api/v1`` route, through the
+    router's dependencies, on the request's own session. A flushed, uncommitted
+    ``UPDATE`` held the key's row lock and ``ROW EXCLUSIVE`` on ``api_keys`` for
+    the whole request: across every Power Map, fetch and broker wait, with a
+    second request on the same key queued behind it. And a route that never
+    committed rolled the write back at session close, so ``last_used_at`` never
+    moved on a read. It is a commit, never a rollback: the factory's
+    ``expire_on_commit=False`` keeps loaded attributes. A route that reads and
+    then waits ends its read the same way. No other dependency takes the
+    session. Pinned by ``tests/api/test_transaction_scope.py``.
     """
     if raw_key is None:
         raise_envelope(403, "auth", "Not authenticated")
@@ -96,4 +108,4 @@ async def require_api_key(
     if api_key is None:
         raise_envelope(401, "auth", "Invalid API key")
     api_key.last_used_at = datetime.now(UTC)
-    await session.flush()
+    await session.commit()  # end the write before the route body waits (#521)
