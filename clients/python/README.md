@@ -25,8 +25,9 @@ dependencies = [
 archiver-client = { path = "/home/exedev/archiver/clients/python", editable = true }
 ```
 
-(Watcher and Replicator both pin via the absolute path on this VM. Once the
-service relocates off-VM the SDK publishes to a real index.)
+(No cohort service depends on it: Watcher and Replicator reach Archiver over
+the bus only, archiver#513. A caller off this VM needs a published SDK, which
+archiver#409 tracks.)
 
 ## Usage
 
