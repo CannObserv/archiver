@@ -174,9 +174,7 @@ def _assert_clean(knob: dict) -> None:
     """Clean but for a prune stage's soak ending, which the probe reports."""
     soaking = {e["line"] for e in knob["exception"] if e["what"].startswith(PRUNE_STAGES)}
     assert [
-        f
-        for f in knob["findings"]
-        if not (f["kind"] == "expired-exception" and f["line"] in soaking)
+        f for f in knob["findings"] if not (f["kind"] == "soak-ended" and f["line"] in soaking)
     ] == []
     assert knob["report_only"] is False, knob["report_only_reasons"]
     assert knob["class"]["value"] == "production"
