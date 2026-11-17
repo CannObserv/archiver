@@ -95,7 +95,9 @@ def _stored(command: CaptureCommand, *, digest: str = DIGEST_A, at: datetime = T
         image_height=5120,
         final_url=command.url + "?landed",
         captured_at=at - timedelta(seconds=2),
-        blob_expires_at=at + timedelta(days=7),
+        # Off the wall clock, not T0: persist issuance reads expiry against now,
+        # so T0 + 7 days stopped issuing on 2026-11-17T12:00Z.
+        blob_expires_at=datetime.now(UTC) + timedelta(days=7),
     )
     values.update(overrides)
     return CaptureStoredEvent(**values)
