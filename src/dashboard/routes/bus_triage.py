@@ -291,6 +291,7 @@ async def bus_triage_page(
     ``BROKER_READ_TIMEOUT_SECONDS``, not one per queue.
     """
     outbox = await _outbox_section(session, page)
+    await session.commit()  # read-only: end it before the broker reads (#405)
     dlqs = await asyncio.gather(*(_dlq_section(redis, dlq, page) for dlq in TRIAGE_DLQS))
     return _templates.TemplateResponse(
         request,

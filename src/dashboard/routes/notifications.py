@@ -518,6 +518,7 @@ async def test_send_subscription(
     text or the key.
     """
     sub = await _get_or_404(session, subscription_id)
+    await session.commit()  # read-only: end it before the compose and the send (#405)
     channel_id = sub.remote_channel_id
     if notifier is None:
         return _test_send_result(

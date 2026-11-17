@@ -158,6 +158,17 @@ async def get_dashboard_user(
     The insert keeps ``ON CONFLICT (external_id) DO UPDATE`` so two concurrent
     first-logins cannot race the unique constraint (#177); the loser of the
     race gets the winner's row back from RETURNING.
+
+    **Every route body starts with no transaction open (#405).** The read path
+    commits too. Without that, the SELECT's transaction stayed open for the
+    whole request, holding ``ACCESS SHARE`` on ``app_users`` across every
+    Power Map, broker, fetch and Notifier wait in the route, which is long
+    enough to fail a deploy migration's lock timeout. It is a commit, never a
+    rollback: the factory's ``expire_on_commit=False`` keeps ``user``'s
+    attributes loaded for the templates, where a rollback expires them and the
+    next read raises ``MissingGreenlet``. A route that reads and then waits ends
+    its own read the same way. No other dependency takes the session. These
+    rules are pinned by ``tests/dashboard/test_transaction_scope.py``.
     """
     external_id = request.headers.get("X-ExeDev-UserID")
     email = request.headers.get("X-ExeDev-Email")
@@ -168,6 +179,7 @@ async def get_dashboard_user(
     result = await session.execute(select(AppUser).where(AppUser.external_id == external_id))
     user = result.scalar_one_or_none()
     if user is not None and user.email == email:
+        await session.commit()  # end the read before the route body waits (#405)
         return user
 
     stmt = (
