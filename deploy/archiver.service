@@ -161,7 +161,11 @@ ExecStartPre=/srv/archiver/live/scripts/check_redis_floor.sh
 # user has none (archiver#339). It never syncs; syncing is a build step. Its
 # shebang names the release's physical path, so a later switch of the link
 # never mixes two releases in one process.
-ExecStart=/srv/archiver/live/.venv/bin/uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --log-config src/core/log_config.json
+# Loopback only (archiver#517): the exe.dev proxy connects from 127.0.0.1, and
+# the dashboard trusts X-ExeDev-* from any peer, so eth0 and tailscale0 must not
+# answer. Pinned by tests/deploy/test_archiver_unit_bind.py; the decision is D3
+# in docs/reference/tailscale.md.
+ExecStart=/srv/archiver/live/.venv/bin/uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --log-config src/core/log_config.json
 Restart=on-failure
 RestartSec=5
 
