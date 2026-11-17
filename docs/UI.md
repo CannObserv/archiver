@@ -141,10 +141,10 @@ client sent is replaced, never passed through (measured through 8001, #517).
 That sizes the cross-VM exposure:
 - **Host-only** means another VM's hostname never receives the cookie.
 - **`exe.xyz` is a public suffix,** so a page on `other-vm.exe.xyz` is
-  cross-site, and `Lax` withholds the cookie from its forms, fetches and POST
-  navigations.
-- **Only a top-level `GET` navigation** carries it cross-VM, and no dashboard
-  `GET` writes beyond the visitor's own `AppUser` row.
+  cross-site, and `Lax` withholds the cookie from its subrequests (fetches,
+  frames, images) and its cross-site `POST`s.
+- **Only a top-level `GET` navigation** (a link, or a `GET` form) carries it
+  cross-VM, and no dashboard `GET` writes beyond the visitor's own `AppUser` row.
 
 The same-origin rule below is for the same-site, cross-port case.
 
