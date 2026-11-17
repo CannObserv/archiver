@@ -79,10 +79,10 @@ hold tailscale tailscale-archive-keyring tailscale
 owner /srv/archiver/live self
 
 # --- callers --------------------------------------------------------------
-# None (#513). No cohort repo calls this host's API: Replicator and Watcher
-# reach it over the bus and GCS only (#142). A private repo's service that
-# calls this host gets no line, since one would publish its name (knob.md):
-# the run tells it by hand.
+# None (#513). No cohort repo calls this host's API: Watcher reaches it over
+# the bus only (#142), Replicator over the bus and GCS. A private repo's
+# service that calls this host gets no line, since one would publish its name
+# (knob.md): the run tells it by hand.
 
 # --- exceptions -----------------------------------------------------------
 exception database:archiver_test 2027-05-31 the suite's database (tests/conftest.py), its schema dropped every session; nothing in it to recover
