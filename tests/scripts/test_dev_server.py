@@ -206,3 +206,31 @@ def test_migration_can_be_skipped() -> None:
     result = run({"TEST_DATABASE_URL": TEST_URL, "ARCHIVER_DEV_SKIP_MIGRATE": "1"})
     assert result.returncode == 0, result.stderr
     assert "MIGRATE=(skipped)" in result.stdout
+
+
+def test_binds_loopback_only() -> None:
+    """The dev server binds ``127.0.0.1`` (archiver#517).
+
+    It runs any branch's code and trusts ``X-ExeDev-*`` from any peer, so only
+    the exe.dev proxy, which connects from loopback, may reach it. The dry run
+    reports the bind; the exec uses the same variable.
+    """
+    result = run({"ARCHIVER_DEV_DATABASE_URL": DEV_URL})
+    assert result.returncode == 0, result.stderr
+    assert "HOST=127.0.0.1" in result.stdout.splitlines()
+
+
+def test_no_knob_widens_the_bind() -> None:
+    """A loopback bind with an override is one env file away from ``0.0.0.0``."""
+    result = run(
+        {"ARCHIVER_DEV_DATABASE_URL": DEV_URL, "ARCHIVER_DEV_HOST": "0.0.0.0", "HOST": "0.0.0.0"}
+    )
+    assert result.returncode == 0, result.stderr
+    assert "HOST=127.0.0.1" in result.stdout.splitlines()
+
+
+def test_uvicorn_exec_takes_the_reported_host() -> None:
+    """The dry run exits before exec, so pin the exec line to the same variable."""
+    execs = [line for line in SCRIPT.read_text().splitlines() if "uvicorn src.api.main:app" in line]
+    assert len(execs) == 1, execs
+    assert '--host "$HOST"' in execs[0]

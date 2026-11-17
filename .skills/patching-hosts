@@ -43,7 +43,7 @@ service archiver.service
 # only, as exedev: never /etc/archiver/.env (root 0600, #339).
 inflight systemctl list-units 'archiver-*.service' --state=activating,active,deactivating --no-legend --plain | grep -v '^archiver\.service' | wc -l
 
-# Loopback: uvicorn binds 0.0.0.0:8000. /health is unauthenticated and
+# Loopback: uvicorn binds 127.0.0.1:8000 only (#517). /health is unauthenticated and
 # DB-free; an authenticated GET on 8000 upserts AppUser on production.
 health curl -sf -m5 http://127.0.0.1:8000/health | jq -e '.status == "ok"'
 

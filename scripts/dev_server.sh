@@ -28,6 +28,7 @@
 # Env knobs:
 #   ARCHIVER_DEV_DATABASE_URL             persistent dev DB; wins over TEST_DATABASE_URL
 #   ARCHIVER_DEV_PORT                     default 8001 (8000 is systemd's, refused)
+#   (no bind knob: always 127.0.0.1, archiver#517)
 #   ARCHIVER_DEV_SKIP_MIGRATE=1           skip the alembic upgrade
 #   ARCHIVER_DEV_SERVER_DRY_RUN=1         print resolution, do not exec uvicorn
 #   ARCHIVER_DEV_SERVER_SKIP_ENV_FILES=1  skip the env file (tests)
@@ -59,6 +60,12 @@ fi
 unset GH_TOKEN
 
 PORT="${ARCHIVER_DEV_PORT:-8001}"
+
+# Loopback only, and no knob (archiver#517). The dashboard trusts X-ExeDev-*
+# from any peer, and this server runs any branch's code: only the exe.dev
+# proxy, which connects from 127.0.0.1, may reach it. Assigned, never read from
+# the environment, so no env file can widen it.
+HOST="127.0.0.1"
 
 # Port 8000 belongs to systemd (archiver.service). Binding it from here either
 # fails on a port clash or, worse, shadows the live service.
@@ -354,6 +361,7 @@ fi
 if [[ "${ARCHIVER_DEV_SERVER_DRY_RUN:-}" == "1" ]]; then
   echo "ARCHIVER_DATABASE_URL=$ARCHIVER_DATABASE_URL"
   echo "DATABASE_URL=(cleared)"
+  echo "HOST=$HOST"
   echo "PORT=$PORT"
   echo "MIGRATE=$MIGRATE_REPORT"
   echo "REDIS=$REDIS_REPORT"
@@ -373,5 +381,5 @@ if [[ "$DO_MIGRATE" == "1" ]]; then
 fi
 
 echo "dev_server: port $PORT → $ARCHIVER_DATABASE_URL"
-exec uv run uvicorn src.api.main:app --host 0.0.0.0 --port "$PORT" --reload \
+exec uv run uvicorn src.api.main:app --host "$HOST" --port "$PORT" --reload \
   --log-config src/core/log_config.json

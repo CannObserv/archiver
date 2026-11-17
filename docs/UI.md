@@ -131,6 +131,23 @@ arrived logged in, carrying `Sec-Fetch-Site: same-site` (measured 2026-11-16).
 Any page served from another port, such as the dev server, a preview or a tool,
 can therefore submit to production on 8000.
 
+**The cookie itself** (read in the operator's devtools, 2026-11-17, #517). The
+proxy sets one cookie per port, `login-with-exe-443`, `-8001` and `-8002`. Each
+is host-only (Domain `co-registrar.exe.xyz`, no leading dot) with Path `/`,
+`HttpOnly`, `Secure` and `SameSite=Lax`. Cookies ignore the port, so all of
+them ride to every port. **The app never sees one:** the proxy removes `Cookie`
+and sends its own `X-ExeDev-UserID` / `X-ExeDev-Email` pair instead. A pair the
+client sent is replaced, never passed through (measured through 8001, #517).
+That sizes the cross-VM exposure:
+- **Host-only** means another VM's hostname never receives the cookie.
+- **`exe.xyz` is a public suffix,** so a page on `other-vm.exe.xyz` is
+  cross-site, and `Lax` withholds the cookie from its subrequests (fetches,
+  frames, images) and its cross-site `POST`s.
+- **Only a top-level `GET` navigation** (a link, or a `GET` form) carries it
+  cross-VM, and no dashboard `GET` writes beyond the visitor's own `AppUser` row.
+
+The same-origin rule below is for the same-site, cross-port case.
+
 **`require_same_origin` (`src/dashboard/deps.py`) refuses every unsafe
 dashboard request that isn't same-*origin*** (scheme, host and port). Unsafe
 means `POST`, `PUT`, `PATCH` or `DELETE`.
