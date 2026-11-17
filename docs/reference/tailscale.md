@@ -16,9 +16,10 @@ specific to archiver.
 ## This deployment
 
 **The broker is a network hop.** Archiver reaches it over the tailnet as
-`redis://default:<password>@broker:6379/0`. This host answers to two names,
-`co-registrar` and `archiver`, both on port 8000, so **an HTTP 200 on a short
-name proves nothing about the tailnet**. Node identity, the ACL, the bind
+`redis://default:<password>@broker:6379/0`. This host has two names,
+`co-registrar` and `archiver`, and since #517 neither reaches port 8000: the
+service binds loopback, so **test the tailnet by address or from the peer, never
+with an HTTP request to a short name**. Node identity, the ACL, the bind
 decision, and the MagicDNS failure that took down three services:
 the sections below.
 
@@ -42,21 +43,24 @@ Two names, two resolvers, one host:
 $ getent hosts archiver
 100.109.138.101 archiver.taild0fb76.ts.net      # MagicDNS -> the tailnet
 $ getent hosts co-registrar
-10.42.0.42      co-registrar.exe.xyz            # exe.dev's DNS -> the VM's eth0
+10.42.0.42      co-registrar.exe.xyz            # /etc/hosts ("managed by exe.dev") -> the VM's eth0
 ```
 
-Both answer, and **so does everything else**: `http://archiver:8000/health`,
-`http://co-registrar:8000/health`, `http://127.0.0.1:8000/health` and
-`http://$(tailscale ip -4):8000/health` all return 200 from this VM.
+Neither name reaches the service: **archiver binds `127.0.0.1:8000`** (D3,
+below). `http://archiver:8000/health`, `http://co-registrar:8000/health` and
+`http://$(tailscale ip -4):8000/health` are all refused from this VM; only
+`http://127.0.0.1:8000/health` (or `localhost`, which resolves to `127.0.0.1`
+alone here) answers. The same holds for the dev server on 8001 and any
+worktree server on 8002 (#517, measured 2026-11-17).
 
-That is D3 working as designed - the bind is `0.0.0.0`, so every interface
-answers - and it is also the trap. **A URL that works here tells you nothing
-about which path it took.** notifier#43 lost an afternoon to the sharper form
-of this (Ubuntu maps the short hostname to `127.0.1.1`, so the name resolves
-locally instead of through MagicDNS, and nothing is listening). This host has
-no such `/etc/hosts` line, and the `0.0.0.0` bind would mask it anyway - which
-makes the quiet version worse, not better: a broken tailnet is invisible from
-this VM's own `curl`.
+Two traps follow from the `/etc/hosts` line. **The public hostname does not go
+through the proxy from this VM:** `https://co-registrar.exe.xyz:8001` resolves
+to eth0, so no probe of the proxy can be run from here - run it off-VM. And
+before #517 the `0.0.0.0` bind answered every one of those URLs, which made a
+broken tailnet invisible from this VM's own `curl`. notifier#43 lost an
+afternoon to the sharper form (Ubuntu maps the short hostname to `127.0.1.1`,
+so the name resolves locally instead of through MagicDNS, and nothing is
+listening).
 
 **Verify the tailnet from the peer, or by address.** `tailscale ping broker`
 and `tailscale status` are the honest checks; an HTTP 200 on a short name is
@@ -93,17 +97,49 @@ The ACL does **not** open port 22. Administering this host goes over
 
 ## The bind, and the boot race archiver does not have
 
-This host binds **`0.0.0.0:8000`**, behind the exe.dev HTTPS proxy's login
-gate. Not a tailnet-only bind, and that is a decision (D3), not an oversight:
-the dashboard's entire identity model is proxy-injected `X-ExeDev-UserID` /
-`X-ExeDev-Email` headers, so a tailnet-only bind has no proxy in front of it
-and **no operator could log in**.
+**D3: archiver binds `127.0.0.1:8000`**, behind the exe.dev HTTPS proxy's
+login gate, and the dev server binds `127.0.0.1` too (archiver#517; pinned by
+`tests/deploy/test_archiver_unit_bind.py` and `tests/scripts/test_dev_server.py`).
 
-The consequence worth stating plainly: **notifier#43's R1 does not apply
-here.** There is no `tailnet_bind.sh`, no `serve.sh`, no wait-for-address
-`ExecStartPre`, and no startup race - because nothing on this host binds an
-address tailscaled has to assign first. Loopback `curl` keeps working from the
-first second of boot.
+The dashboard's entire identity model is the proxy-injected `X-ExeDev-UserID` /
+`X-ExeDev-Email` pair, trusted from any peer, with no email allowlist: any
+request carrying both is an operator with every dashboard write. So who can put
+those headers on a request *is* the authorization model, and only the proxy may
+reach the port:
+
+- **The proxy connects from loopback** [measured: on 8001 in #404, 2026-11-16;
+  on 8000 in #517, every peer `127.0.0.1` while the operator browsed,
+  2026-11-17]. A loopback bind keeps it.
+- **The proxy does not pass a client's own pair through** [measured, #517,
+  2026-11-17]. Unauthenticated, the private site's gate answers `307` and
+  nothing reaches the app. Authenticated, a forged pair sent from the
+  operator's browser arrived on 8001 as exactly one `X-ExeDev-UserID` and one
+  `X-ExeDev-Email`, neither of them the forged value. The same fetch on
+  production left `app_users` unchanged (no new row, no email update). The
+  site is Private with no shares (`share show`), so only the VM owner gets
+  past the gate. Making it public would, with no allowlist, make every exe.dev
+  account an operator.
+- **eth0 (`10.42.0.42`) and tailscale0 (`100.109.138.101`) carry no proxy.**
+  Before #517 both answered with the forged pair trusted. `co-watcher`'s own
+  eth0 is also `10.42.0.42`, so its `curl http://10.42.0.42:8000` reached
+  itself, not us; this host's tailnet address timed out from there (the ACL
+  has no `tag:archiver` destination). No outside path to either was found, so
+  the bind is defence in depth, not a fix for a hole shown to be live.
+
+Not a tailnet-only bind either: that path has no proxy, so **no operator could
+log in**. Both earlier choices, `0.0.0.0` and tailnet-only, are weighed out.
+
+**What the bind does not close:** any process on this VM can still send a
+forged pair to `127.0.0.1:8000`. An allowlist would not stop it (the email is
+the forged value); only a proxy-signed identity would, and exe.dev documents
+none. Agents on this host must not send an authenticated request to 8000
+(AGENTS.md § Server Lifecycle).
+
+**notifier#43's R1 does not apply here.** There is no `tailnet_bind.sh`, no
+`serve.sh`, no wait-for-address `ExecStartPre`, and no startup race: loopback
+exists before any unit starts, so nothing on this host binds an address
+tailscaled has to assign first, and loopback `curl` works from the first second
+of boot.
 
 The broker node *does* carry that race, and solves it there. See
 `CannObserv/broker:deploy/redis-server.service.d/broker.conf` and its

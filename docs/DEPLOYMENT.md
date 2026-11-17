@@ -3,8 +3,8 @@
 Releases and `scripts/deploy.sh`, the service user, reading
 production, wheelhouse reproducibility, Dependabot and the timers. The environment
 variable reference and the dev server's internals are [ENVIRONMENT.md](ENVIRONMENT.md).
-The host's place on the tailnet - node identity, the ACL, why there is no
-tailnet-only bind - is [reference/tailscale.md](reference/tailscale.md).
+The host's place on the tailnet - node identity, the ACL, why the service binds
+loopback only (D3) - is [reference/tailscale.md](reference/tailscale.md).
 
 ## Releases (archiver#330)
 

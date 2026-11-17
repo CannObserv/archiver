@@ -418,7 +418,7 @@ docs/                          Live reference docs, the dashboard living docs
                                among them (see "Dashboard living docs").
                                reference/ holds host-shaped facts that are not
                                about the code: tailscale.md (this node, the
-                               ACL, why there is no tailnet-only bind).
+                               ACL, why the bind is loopback - D3).
                                Indexed by the Detail Docs section of AGENTS.md.
                                Archival subtrees: plans/ + research/ + archive/
                                (retired operational history)
