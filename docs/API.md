@@ -5,6 +5,20 @@ release; `AGENTS.md` carries only the auth rule and a pointer here. The bus
 contracts Archiver produces and consumes are in [BUS.md](BUS.md) and
 [BUS_CONSUMERS.md](BUS_CONSUMERS.md).
 
+## Authentication
+
+`require_api_key` (`src/api/deps.py`) checks `X-API-Key` on every `/api/v1`
+route: absent 403, unknown 401.
+
+**No transaction across an outbound wait (#521).** It stamps `last_used_at`
+and **commits**, so every route body starts with no transaction. Uncommitted,
+the stamp held the key's row lock across Power Map, fetch and broker waits,
+queueing same-key requests and blocking migrations; read-only routes rolled it
+back. A route that reads and then waits commits first, holding what it read
+(the identity map is weak): today `PUT /info-items/{id}/org`. No other
+dependency takes the session. Pinned by `tests/api/test_transaction_scope.py`
+(#405's shape, [UI.md](UI.md)); a new wait gets a test there.
+
 ## Authoring tools + assignment endpoints (v2)
 
 The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-resource routes under `/api/v1/info-items/{id}/*`. All routes use `X-API-Key` auth (only `/health` and `/openapi.json` are open). Each route has an ergonomic SDK wrapper on `ArchiverClient` (v5.x; see [CHANGELOG.md](../CHANGELOG.md) for version history).

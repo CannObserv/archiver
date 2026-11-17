@@ -1191,10 +1191,20 @@ async def put_org(
 
     Nothing is announced: org identity rides no bus stream.
     """
+    item_ulid = ULID.from_str(info_item_id)
+    # End the read before Power Map (#521). Holding `existing` keeps the item in
+    # the session's identity map, which references weakly, so link_org's own
+    # existence check answers without SQL and nothing reopens a transaction
+    # until it locks the row after the wait. Pinned by
+    # tests/api/test_transaction_scope.py.
+    existing = await session.get(InfoItem, item_ulid)
+    await session.commit()
+    if existing is None:
+        raise_envelope(404, "lookup", "InfoItem not found")
     try:
         item = await link_org(
             session,
-            info_item_id=ULID.from_str(info_item_id),
+            info_item_id=item_ulid,
             pm_org_id=body.pm_org_id,
             power_map=power_map,
             allow_destination_change=body.allow_destination_change,
