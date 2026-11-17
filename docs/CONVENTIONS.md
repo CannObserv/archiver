@@ -280,9 +280,9 @@ sweep step ran `check-seams.sh` alone; the populated rows were all hand-run
 curations (upstream #258). A sweep that never
 runs and a number the record step never forwards produce the same null, so both
 directions are pinned: every variable the sweep exports is paired with the
-`--flag` that carries it into `record-telemetry.sh`, and a check that printed no
-number must export **empty** rather than `0` - `${COUNTS:+...}` then drops the
-flag, and a crashed check records "unknown" instead of "clean".
+`--flag` that carries it into `record-telemetry.sh`. A check that printed no
+number never exports `0`: since gregoryfoster/skills#526 it **fails the step**
+by name before `GITHUB_ENV`, so no row goes out with the field missing.
 
 `tests/scripts/test_context_cadence.py` **extracts the steps and runs them**
 under `bash -e` - the resolve step against fixture projects (the ordinary case,
@@ -291,8 +291,8 @@ checks that print known numbers. Not an assertion over the YAML: a step can
 export exactly the right variable names and resolve them wrongly, and only
 running it tells the two apart.
 
-The workflow's header lists the deltas archiver holds over the installer's
-render - one, since archiver#249 re-rendered it and the rest landed upstream.
+Archiver holds no delta over the installer's render (archiver#525): re-run
+`install-cadence.sh` rather than editing the workflow by hand.
 
 ## Import placement - scope and exemptions
 
