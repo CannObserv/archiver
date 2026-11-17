@@ -28,7 +28,7 @@ import hashlib
 
 import pytest
 from fakeredis import aioredis as fakeredis_aio
-from fastapi import APIRouter, Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
@@ -72,14 +72,16 @@ async def test_a_valid_key_is_resolved_with_no_transaction_left_open(session):
     assert stamped is not None
 
 
-async def test_a_bad_key_writes_nothing_and_leaves_nothing_open(session):
+async def test_a_bad_key_is_a_401_that_stamps_nothing(session):
     await _cold(session)
+    before = await session.scalar(select(ApiKey.last_used_at).where(ApiKey.key_hash == _KEY_HASH))
 
-    with pytest.raises(Exception, match="Invalid API key"):
+    with pytest.raises(HTTPException) as excinfo:
         await require_api_key("not-a-key", session)
 
-    # The lookup's read is still open here; get_db_session's close ends it.
-    assert not session.dirty
+    assert excinfo.value.status_code == 401
+    stamped = await session.scalar(select(ApiKey.last_used_at).where(ApiKey.key_hash == _KEY_HASH))
+    assert stamped == before
 
 
 # --- 2. on real connections ----------------------------------------------
