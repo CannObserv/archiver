@@ -288,7 +288,9 @@ src/core/                      Domain logic
                                "Content-acquisition via co-core"
   database.py                  Lazy async engine + async_sessionmaker singletons
                                (get_database_url / get_engine /
-                               get_session_factory / reset_engine)
+                               get_session_factory / reset_engine); the
+                               engine pre-pings each checkout, so a Postgres
+                               restart costs no request (archiver#510)
   log_config.json              uvicorn --log-config dictConfig — routes
                                uvicorn/.access/.error through build_json_formatter
                                so uvicorn lines match app logs (archiver#122);

@@ -33,10 +33,18 @@ def get_database_url() -> str:
 
 
 def get_engine() -> AsyncEngine:
+    """The process's one engine: request sessions, consumers, the outbox, the timers.
+
+    ``pool_pre_ping`` tests each pooled connection at checkout and replaces a
+    dead one (#510). A Postgres restart with the app up - the patch run's held
+    ``postgres`` step - kills every idle pooled connection, and without the
+    ping each one failed its next request. The ping covers checkout only: a
+    connection that dies mid-transaction still fails that transaction once.
+    """
     global _engine
     if _engine is None:
         url = get_database_url()
-        _engine = create_async_engine(url, echo=False)
+        _engine = create_async_engine(url, echo=False, pool_pre_ping=True)
         logger.info("archiver db engine created", extra={"url": url.split("@")[-1]})
     return _engine
 
