@@ -132,8 +132,9 @@ log in**. Both earlier choices, `0.0.0.0` and tailnet-only, are weighed out.
 **What the bind does not close:** any process on this VM can still send a
 forged pair to `127.0.0.1:8000`. An allowlist would not stop it (the email is
 the forged value); only a proxy-signed identity would, and exe.dev documents
-none. Agents on this host must not send an authenticated request to 8000
-(AGENTS.md § Server Lifecycle).
+none. Agents on this host must not send an authenticated request to 8000, not even
+a `GET`: the first sight of an identity upserts an `AppUser` row on production
+(AGENTS.md § Server Lifecycle: anything that writes targets 8001).
 
 **notifier#43's R1 does not apply here.** There is no `tailnet_bind.sh`, no
 `serve.sh`, no wait-for-address `ExecStartPre`, and no startup race: loopback
