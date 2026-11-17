@@ -291,8 +291,11 @@ checks that print known numbers. Not an assertion over the YAML: a step can
 export exactly the right variable names and resolve them wrongly, and only
 running it tells the two apart.
 
-Archiver holds no delta over the installer's render (archiver#525): re-run
-`install-cadence.sh` rather than editing the workflow by hand.
+Archiver holds no delta over the installer's render (archiver#525): `bash
+.claude/skills/curating-context/scripts/install-cadence.sh --check` reads
+`re-render: none` and `merge mode: pr`. Under `pr` the row goes to one standing
+PR from `context/weekly-measurement`, opened with `GITHUB_TOKEN`, so no CI starts
+on it: close and reopen it to run the checks.
 
 ## Import placement - scope and exemptions
 
