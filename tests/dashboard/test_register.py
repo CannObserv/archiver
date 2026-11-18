@@ -867,6 +867,7 @@ async def test_preview_of_a_bot_challenge_is_one_status_error(client, extraction
     )
     assert expected in r.text
     assert r.text.count('class="text-sm text-danger"') == 1
+    assert "Ask the site's owner to allowlist it, or use another source." in r.text
     for absent in (
         "Retrieval successful",
         "Extraction successful",
@@ -886,6 +887,7 @@ async def test_preview_of_an_error_status_names_it(client, status_code):
     r = await _preview(client, fetcher, '{"algorithm":"full_page"}')
     assert f"The target answered HTTP {status_code} " in r.text
     assert "Cloudflare" not in r.text
+    assert "allowlist" not in r.text
     assert "Retrieval successful" not in r.text
     assert "My Preview Page" not in r.text  # no suggested name from an error page
 

@@ -3,6 +3,10 @@
   {% for err in errors %}
   <p class="text-sm text-danger">{{ err }}</p>
   {% endfor %}
+  {% if challenge %}
+  {# Advisory only (#473): archiver never solves or works around a bot challenge. #}
+  <p class="text-sm text-muted">Archiver doesn't get past bot challenges. Ask the site's owner to allowlist it, or use another source.</p>
+  {% endif %}
 </div>
 {% else %}
 <div style="background:var(--color-surface-alt,var(--color-surface));padding:var(--space-2);border-radius:var(--radius);margin-top:var(--space-2);">

@@ -5,8 +5,8 @@ import pytest
 from co_core.effects.fetch import FetchResult
 
 from src.core.tools import propose_selectors as propose_module
-from src.core.tools.fetch_errors import TargetHttpError, TargetUnreachableError
 from src.core.tools.propose_selectors import propose_selectors
+from src.core.tools.target_fetch import TargetHttpError, TargetUnreachableError
 
 HTML = b"<html><body><h1 class='page-title'>Active Licenses</h1></body></html>"
 

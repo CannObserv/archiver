@@ -18,8 +18,9 @@ import re
 from dataclasses import dataclass
 
 from bs4 import BeautifulSoup, Tag
-from co_core.effects.fetch import FetchContent, FetchResult
 from co_core_aio.fetch import AsyncFetchDriver
+
+from src.core.tools.target_fetch import fetch_2xx
 
 _VOLATILE_TOKEN = re.compile(
     # Any class beginning with hash- / hash_ — these are typically deploy-scoped.
@@ -109,10 +110,15 @@ async def propose_selectors(
 
     Empty match set returns ``[]`` (not an error). Operators always verify the
     chosen selector via ``preview_extraction`` before persisting a SourceSpec.
+
+    Raises:
+        TargetUnreachableError: if the HTTP fetch fails.
+        TargetHttpError: if the target answered a non-2xx: selectors proposed from
+            an error page or a bot challenge are noise (#473).
     """
     if not description:
         return []
-    fetch_result: FetchResult = await driver.execute(FetchContent(url))
+    fetch_result = await fetch_2xx(driver, url)
     soup = BeautifulSoup(fetch_result.content, "lxml")
     needle = description.lower()
 

@@ -11,7 +11,6 @@ from co_core.pure.extract.html import HtmlExtractor
 from co_core.pure.extract.pdf import PdfExtractor
 
 from src.core.tools import preview_extraction as preview_module
-from src.core.tools.fetch_errors import TargetHttpError
 from src.core.tools.preview_extraction import (
     ExtractionFailedError,
     PreviewExtractionResult,
@@ -19,6 +18,7 @@ from src.core.tools.preview_extraction import (
     TargetUnreachableError,
     preview_extraction,
 )
+from src.core.tools.target_fetch import TargetHttpError
 
 HTML_FIXTURE = (
     b"<html><body><div class='target'>kept content</div><div>dropped content</div></body></html>"

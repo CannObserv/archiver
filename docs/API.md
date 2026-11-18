@@ -61,8 +61,8 @@ which calls the same core functions without these routes.
 | `resolve_rep_fields` | `POST /tools/resolve-rep-fields` | `resolve_rep_fields(bag)` |
 | `find_info_item` | `GET /tools/find-info-items?q=…` | `find_info_item(query, limit=20)` |
 | `fetch_and_render` | `POST /tools/fetch-and-render` | `fetch_and_render(url)` |
-| `preview_extraction` | `POST /tools/preview-extraction` | `preview_extraction(url, source_spec)` |
-| `propose_selectors` | `POST /tools/propose-selectors` | `propose_selectors(url, description, top_k=5)` |
+| `preview_extraction` | `POST /tools/preview-extraction` | `preview_extraction(url, source_spec)`. 422 `kind="schema"` for a spec the validator or extractor refuses; 422 `kind="domain"` with `code` `target_unreachable` (transport error), `target_http_error` (the target answered a non-2xx, such as a 403 bot challenge: nothing is extracted; `data` = `{status_code, challenge}`, archiver#473) or `extraction_failed` |
+| `propose_selectors` | `POST /tools/propose-selectors` | `propose_selectors(url, description, top_k=5)`. 422 `kind="domain"` with `code` `target_unreachable` or `target_http_error`, as preview (archiver#473; a transport error was a 500 before) |
 
 **Mutating endpoints:**
 

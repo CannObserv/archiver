@@ -47,6 +47,7 @@ from src.core.tools.create_info_source import (
     create_info_source,
 )
 from src.core.tools.preview_extraction import SourceSpecValidationError, preview_extraction
+from src.core.tools.target_fetch import TargetHttpError
 from src.core.tools.update_info_source_specs import (
     InvalidSourceSpecError as UpdateInvalidSpecError,
 )
@@ -372,11 +373,12 @@ async def preview(
             },
         )
     except Exception as exc:  # noqa: BLE001
-        errors = (
-            [f"{err['path']}: {err['message']}" for err in exc.errors]
-            if isinstance(exc, SourceSpecValidationError)
-            else [str(exc)]
-        )
+        if isinstance(exc, SourceSpecValidationError):
+            errors = [f"{err['path']}: {err['message']}" for err in exc.errors]
+        elif isinstance(exc, TargetHttpError):
+            errors = [_target_http_error_line(exc, spec)]
+        else:
+            errors = [str(exc)]
         return _templates.TemplateResponse(
             request,
             "register/_preview_result.html",
@@ -385,9 +387,22 @@ async def preview(
                 "text_preview": "",
                 "fingerprint": "",
                 "errors": errors,
+                "challenge": isinstance(exc, TargetHttpError) and exc.challenge,
                 "suggested_name": "",
             },
         )
+
+
+def _target_http_error_line(exc: TargetHttpError, spec: dict[str, Any]) -> str:
+    """One line for a refused fetch (#473): the status, and what went untested.
+
+    The spec was validated before the fetch, so ``extraction`` is present. With no
+    selector (``full_page``, or an empty one) there is no selector to blame.
+    """
+    untested = "selector" if spec["extraction"].get("selector") else "spec"
+    return (
+        f"The target answered {exc.status_line}: nothing to extract. The {untested} was not tested."
+    )
 
 
 # ---------------------------------------------------------------------------
