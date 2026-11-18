@@ -239,6 +239,11 @@ def test_worst_case_connect_is_bounded_by_retries_times_the_connect_timeout() ->
         ("redis://user:hunter2@[2001:db8::1]:6379/0", "redis://user:***@[2001:db8::1]:6379/0"),
         # No password: returned verbatim, so the host keeps its original case.
         ("redis://BROKER.Example:6379/0", "redis://BROKER.Example:6379/0"),
+        # redis-py hands query keys to the connection, ?password= included
+        # (archiver#448): no query value is logged, with or without userinfo.
+        ("redis://broker:6379/0?password=hunter2", "redis://broker:6379/0?***"),
+        ("redis://:hunter2@broker:6379/0?db=1", "redis://:***@broker:6379/0?***"),
+        ("redis://BROKER.Example:6379/0#frag", "redis://BROKER.Example:6379/0?***"),
     ],
 )
 def test_redact_url_removes_the_password(url: str, expected: str) -> None:
