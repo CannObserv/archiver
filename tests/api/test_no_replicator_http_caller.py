@@ -1,4 +1,4 @@
-"""No route, schema or SDK docstring names Replicator as an HTTP caller (archiver#528).
+"""No route, schema or SDK docstring names Replicator or Watcher as an HTTP caller (#528).
 
 #513 measured that no cohort service calls this host's API: Replicator closes a
 replication over the bus (``content.artifacts``), and ``src/core/`` writes
@@ -12,7 +12,10 @@ from pathlib import Path
 
 from src.api.main import app
 
-_CLAIM = re.compile(r"called by replicator|replicator callback|replicator calls", re.I)
+_SERVICE = r"(?:replicator|watcher)"
+_CLAIM = re.compile(
+    rf"called by {_SERVICE}|{_SERVICE} callback|{_SERVICE} calls|\(e\.g\. {_SERVICE}\)", re.I
+)
 _SDK = Path(__file__).resolve().parents[2] / "clients" / "python" / "src" / "archiver_client"
 
 
@@ -30,9 +33,10 @@ def test_the_hand_written_sdk_names_no_replicator_caller() -> None:
 
 
 def test_the_pattern_catches_each_phrasing() -> None:
-    """Non-vacuity: both phrasings #528 found."""
+    """Non-vacuity: both phrasings #528 found, and CR 5's Watcher example."""
     for text in (
         "Called by Replicator after a successful replication job.",
         "Patch a SourceRevision's cache fields (Replicator callback).",
+        "may be supplied by the client (e.g. Watcher) so the scratch file",
     ):
         assert _CLAIM.search(text), text

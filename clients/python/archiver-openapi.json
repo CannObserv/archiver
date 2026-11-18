@@ -2741,7 +2741,7 @@
         "type": "object"
       },
       "SourceRevisionCreate": {
-        "description": "Request body for POST /source-revisions.\n\n``source_revision_id`` is optional and may be supplied by the client\n(e.g. Watcher) so the scratch file at ``content_cache_uri`` can be\nwritten under its final filename BEFORE the POST round-trips. When\nomitted, the server allocates a ULID. Idempotency on\n``(info_source_id, content_fingerprint)`` still wins on re-POST \u2014\na client-supplied ULID is honored on fresh inserts only; existing\nrows are returned as-is.",
+        "description": "Request body for POST /source-revisions.\n\n``source_revision_id`` is optional and may be supplied by the client so\nthe scratch file at ``content_cache_uri`` can be written under its final\nfilename BEFORE the POST round-trips. When\nomitted, the server allocates a ULID. Idempotency on\n``(info_source_id, content_fingerprint)`` still wins on re-POST \u2014\na client-supplied ULID is honored on fresh inserts only; existing\nrows are returned as-is.",
         "properties": {
           "captured_at": {
             "format": "date-time",
