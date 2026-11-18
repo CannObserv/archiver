@@ -223,6 +223,7 @@ def test_a_url_without_a_password_prints_whole(url: str) -> None:
 def test_an_empty_password_is_masked_too() -> None:
     """``user:@host`` still says a password field was there."""
     result = run({"TEST_DATABASE_URL": db_url("archiver_test", "")})
+    assert result.returncode == 0, result.stderr
     assert report(result.stdout, "ARCHIVER_DATABASE_URL") == MASKED_TEST
 
 
@@ -230,6 +231,7 @@ def test_a_query_is_withheld() -> None:
     """``?password=`` reaches asyncpg's ``connect()``, so no query value prints."""
     url = "postgresql+asyncpg://archiver@localhost:5432/archiver_test?sslmode=require"
     result = run({"TEST_DATABASE_URL": url})
+    assert result.returncode == 0, result.stderr
     assert report(result.stdout, "ARCHIVER_DATABASE_URL") == (
         "postgresql+asyncpg://archiver@localhost:5432/archiver_test?***"
     )
@@ -238,6 +240,7 @@ def test_a_query_is_withheld() -> None:
 def test_a_raw_at_sign_masks_up_to_the_last_one() -> None:
     """Credentials end at the authority's last ``@``, as urlsplit and redis-py read it."""
     result = run({"TEST_DATABASE_URL": db_url("archiver_test", RAW)})
+    assert result.returncode == 0, result.stderr
     assert report(result.stdout, "ARCHIVER_DATABASE_URL") == MASKED_TEST
 
 
