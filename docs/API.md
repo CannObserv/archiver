@@ -61,8 +61,8 @@ which calls the same core functions without these routes.
 | `resolve_rep_fields` | `POST /tools/resolve-rep-fields` | `resolve_rep_fields(bag)` |
 | `find_info_item` | `GET /tools/find-info-items?q=…` | `find_info_item(query, limit=20)` |
 | `fetch_and_render` | `POST /tools/fetch-and-render` | `fetch_and_render(url)` |
-| `preview_extraction` | `POST /tools/preview-extraction` | `preview_extraction(url, source_spec)` |
-| `propose_selectors` | `POST /tools/propose-selectors` | `propose_selectors(url, description, top_k=5)` |
+| `preview_extraction` | `POST /tools/preview-extraction` | `preview_extraction(url, source_spec)`. 422 codes `target_unreachable`, `target_http_error` (non-2xx, archiver#473), `extraction_failed`: see OpenAPI |
+| `propose_selectors` | `POST /tools/propose-selectors` | `propose_selectors(url, description, top_k=5)`. 422 codes `target_unreachable`, `target_http_error` |
 
 **Mutating endpoints:**
 

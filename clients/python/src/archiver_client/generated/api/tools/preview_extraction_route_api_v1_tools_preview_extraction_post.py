@@ -107,8 +107,11 @@ def sync_detailed(
     Returns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec
     fails validation or no extractor honours it on this body (``css`` on XML,
     ``jsonpath`` on HTML, ``css`` or ``xpath`` on JSON, an invalid ``xpath`` or
-    ``jsonpath``), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` or
-    ``extraction_failed`` (the body would not parse).
+    ``jsonpath``), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` (the
+    fetch failed), ``target_http_error`` (the target answered a non-2xx, e.g. a
+    403 bot challenge: nothing is extracted, and ``data`` carries
+    ``status_code`` and ``challenge``) or ``extraction_failed`` (the body would
+    not parse).
 
     Args:
         body (PreviewExtractionRequest): Request body for POST /api/v1/tools/preview-extraction.
@@ -149,8 +152,11 @@ def sync(
     Returns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec
     fails validation or no extractor honours it on this body (``css`` on XML,
     ``jsonpath`` on HTML, ``css`` or ``xpath`` on JSON, an invalid ``xpath`` or
-    ``jsonpath``), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` or
-    ``extraction_failed`` (the body would not parse).
+    ``jsonpath``), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` (the
+    fetch failed), ``target_http_error`` (the target answered a non-2xx, e.g. a
+    403 bot challenge: nothing is extracted, and ``data`` carries
+    ``status_code`` and ``challenge``) or ``extraction_failed`` (the body would
+    not parse).
 
     Args:
         body (PreviewExtractionRequest): Request body for POST /api/v1/tools/preview-extraction.
@@ -186,8 +192,11 @@ async def asyncio_detailed(
     Returns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec
     fails validation or no extractor honours it on this body (``css`` on XML,
     ``jsonpath`` on HTML, ``css`` or ``xpath`` on JSON, an invalid ``xpath`` or
-    ``jsonpath``), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` or
-    ``extraction_failed`` (the body would not parse).
+    ``jsonpath``), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` (the
+    fetch failed), ``target_http_error`` (the target answered a non-2xx, e.g. a
+    403 bot challenge: nothing is extracted, and ``data`` carries
+    ``status_code`` and ``challenge``) or ``extraction_failed`` (the body would
+    not parse).
 
     Args:
         body (PreviewExtractionRequest): Request body for POST /api/v1/tools/preview-extraction.
@@ -226,8 +235,11 @@ async def asyncio(
     Returns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec
     fails validation or no extractor honours it on this body (``css`` on XML,
     ``jsonpath`` on HTML, ``css`` or ``xpath`` on JSON, an invalid ``xpath`` or
-    ``jsonpath``), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` or
-    ``extraction_failed`` (the body would not parse).
+    ``jsonpath``), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` (the
+    fetch failed), ``target_http_error`` (the target answered a non-2xx, e.g. a
+    403 bot challenge: nothing is extracted, and ``data`` carries
+    ``status_code`` and ``challenge``) or ``extraction_failed`` (the body would
+    not parse).
 
     Args:
         body (PreviewExtractionRequest): Request body for POST /api/v1/tools/preview-extraction.

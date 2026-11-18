@@ -835,7 +835,7 @@ class ArchiverClient:
         content_cache_uri: str | None = UNSET,
         content_cache_expires_at: datetime.datetime | None = UNSET,
     ) -> SourceRevisionOut:
-        """Patch a SourceRevision's cache fields (Replicator callback).
+        """Patch a SourceRevision's cache fields (an operator or external caller).
 
         Pass ``None`` to explicitly clear a field. Omit to leave untouched (UNSET).
         """

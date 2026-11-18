@@ -78,6 +78,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.btn--ghost` - transparent, borderless, no hover chrome beyond a faint fill. Reserved for the brand-colored **topbar** (Sign out, theme toggle), where `.topbar .btn--ghost` renders `--color-text-on-brand` (white). On page surfaces it defaults to `--color-text` but reads as plain text - prefer `.btn--secondary` for actions that should look clickable.
 - `.btn--active` - brand-subtle background with brand text; use for the currently-selected state of a toggle button group (e.g. sort mode buttons in `sortableChips`).
 - `.btn--sm` - compact size.
+- `.selector-chip`, `.selector-chip__label`, `.selector-chip__count` - a selector suggestion chip (register step 2, #484). `.btn` is `white-space: nowrap`, so a long xpath made its chip as wide as itself and the strip widened the page. The chip caps at `max-width: 100%`; the label wraps (`overflow-wrap: anywhere`, which alone lowers the min-content size, with `min-width: 0`); the `×N` count stays whole (`nowrap`, `flex-shrink: 0`). `.btn` itself is unchanged. `tests/dashboard/test_template_style_rules.py` pins all of it.
 - Minimum touch target: 44 × 44 px (enforced by `min-height: 44px`).
 
 ### Badges & Status
@@ -149,6 +150,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.text-danger` - `color: var(--color-danger)`. Use on inline error messages and destructive-action labels.
 - `.text-success` - `color: var(--color-success)`. Use on inline confirmation/status messages.
 - `.skip-link` - top-of-page accessibility link.
+- `.stack` - one column of blocks with a `--space-3` gap (flex column). Use it rather than a two-column grid when either block can hold an unbreakable run: a `1fr` track never shrinks below its min-content width (#484, register step 2).
 
 ### Alpine.js integration
 - `[x-cloak] { display: none !important; }` - prevents FOUC on elements controlled by `x-show`. Add `x-cloak` to any element that should be hidden before Alpine initialises (e.g. collapsible panels). Do **not** add `x-cloak` to elements that should start visible.

@@ -113,6 +113,12 @@ def sync_detailed(
     set returns ``[]``. Operators always verify the chosen selector via
     ``preview_extraction`` before persisting a SourceSpec.
 
+    Returns 422 with the standard error envelope, ``kind=\"domain\"``, as
+    ``preview-extraction`` does (#473): ``code`` ``target_unreachable`` (the
+    fetch failed) or ``target_http_error`` (the target answered a non-2xx, e.g.
+    a 403 bot challenge: nothing is proposed, and ``data`` carries
+    ``status_code`` and ``challenge``).
+
     Args:
         body (ProposeSelectorsRequest): Request body for POST /api/v1/tools/propose-selectors.
 
@@ -153,6 +159,12 @@ def sync(
     set returns ``[]``. Operators always verify the chosen selector via
     ``preview_extraction`` before persisting a SourceSpec.
 
+    Returns 422 with the standard error envelope, ``kind=\"domain\"``, as
+    ``preview-extraction`` does (#473): ``code`` ``target_unreachable`` (the
+    fetch failed) or ``target_http_error`` (the target answered a non-2xx, e.g.
+    a 403 bot challenge: nothing is proposed, and ``data`` carries
+    ``status_code`` and ``challenge``).
+
     Args:
         body (ProposeSelectorsRequest): Request body for POST /api/v1/tools/propose-selectors.
 
@@ -187,6 +199,12 @@ async def asyncio_detailed(
     volatility penalty (hash-looking class names get demoted). Empty match
     set returns ``[]``. Operators always verify the chosen selector via
     ``preview_extraction`` before persisting a SourceSpec.
+
+    Returns 422 with the standard error envelope, ``kind=\"domain\"``, as
+    ``preview-extraction`` does (#473): ``code`` ``target_unreachable`` (the
+    fetch failed) or ``target_http_error`` (the target answered a non-2xx, e.g.
+    a 403 bot challenge: nothing is proposed, and ``data`` carries
+    ``status_code`` and ``challenge``).
 
     Args:
         body (ProposeSelectorsRequest): Request body for POST /api/v1/tools/propose-selectors.
@@ -225,6 +243,12 @@ async def asyncio(
     volatility penalty (hash-looking class names get demoted). Empty match
     set returns ``[]``. Operators always verify the chosen selector via
     ``preview_extraction`` before persisting a SourceSpec.
+
+    Returns 422 with the standard error envelope, ``kind=\"domain\"``, as
+    ``preview-extraction`` does (#473): ``code`` ``target_unreachable`` (the
+    fetch failed) or ``target_http_error`` (the target answered a non-2xx, e.g.
+    a 403 bot challenge: nothing is proposed, and ``data`` carries
+    ``status_code`` and ``challenge``).
 
     Args:
         body (ProposeSelectorsRequest): Request body for POST /api/v1/tools/propose-selectors.

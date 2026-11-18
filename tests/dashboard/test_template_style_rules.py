@@ -440,3 +440,70 @@ def test_the_link_hover_scan_sees_each_way_back_in() -> None:
     assert _generic_link_hover_colours(clean + "\na:hover { background-color: red; }") == [
         _APPROVED_LINK_HOVER
     ], "background-color is not color"
+
+
+# ---------------------------------------------------------------------------
+# Register step 2 stacks, and a long selector chip wraps (archiver#484)
+#
+# Step 2 was a `1fr 1fr` grid. A `1fr` track's minimum is its min-content
+# width, and `.btn` is `white-space: nowrap`, so the longest chip set the
+# suggestions column's width and pushed the spec editor off the page.
+# ---------------------------------------------------------------------------
+
+_REGISTER = _TEMPLATES / "register" / "index.html"
+_SUGGESTIONS = _TEMPLATES / "register" / "_spec_suggestions.html"
+
+
+def _step_two(html: str) -> str:
+    """Step 2's markup: from its comment to step 3's."""
+    start = html.index("{# --- Step 2: Selector --- #}")
+    return html[start : html.index("{# --- Step 3", start)]
+
+
+def test_register_step_two_stacks_suggestions_over_the_editor() -> None:
+    step = _step_two(_REGISTER.read_text())
+
+    assert "grid-template-columns" not in step, "side by side lets a chip widen the page"
+    assert re.search(r"<div[^>]*\bclass=\"[^\"]*\bstack\b", step), "the blocks stack"
+    order = [
+        'id="spec-suggestions-panel"',
+        'id="reg-source-specs"',
+        "Preview extraction →",
+        'id="preview-result"',
+        "← Back",
+    ]
+    positions = [step.index(marker) for marker in order]
+    assert positions == sorted(positions), "help → suggestions → editor → preview → Back/Next"
+
+
+def test_a_stack_is_a_single_column_with_a_gap() -> None:
+    rule = _rule(".stack", _CSS.read_text())
+
+    assert "display: flex" in rule
+    assert "flex-direction: column" in rule
+    assert "gap: var(--space-" in rule
+
+
+def test_a_selector_chip_label_wraps_and_its_count_stays_whole() -> None:
+    chip = _SUGGESTIONS.read_text()
+    assert re.search(r"<button[^>]*\bclass=\"[^\"]*\bselector-chip\b", chip)
+    assert 'class="selector-chip__label"' in chip
+    assert re.search(r"class=\"[^\"]*\bselector-chip__count\b", chip)
+
+    css = _CSS.read_text()
+    button = _rule(".selector-chip", css)
+    assert "max-width: 100%" in button, "a chip is never wider than its strip"
+    label = _rule(".selector-chip__label", css)
+    assert "white-space: normal" in label
+    # `anywhere`, not `break-word`: only `anywhere` lowers the min-content size,
+    # which is what lets the chip narrow (see `.entity-section__title`).
+    assert "overflow-wrap: anywhere" in label
+    assert "min-width: 0" in label
+    count = _rule(".selector-chip__count", css)
+    assert "white-space: nowrap" in count
+    assert "flex-shrink: 0" in count, "the ×N badge stays visible"
+
+
+def test_the_chip_fix_leaves_btn_alone() -> None:
+    """#484: no change to `.btn` for the dashboard's other buttons."""
+    assert "white-space: nowrap" in _rule(".btn", _CSS.read_text())

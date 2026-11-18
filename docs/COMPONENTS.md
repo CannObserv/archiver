@@ -174,7 +174,9 @@ Single-field document editor with client-side JSON parse validation on blur.
 
 ## `sortableChips`
 
-Chip strip for selector suggestions with client-side re-sort. Used by the registration wizard (`register/_spec_suggestions.html`) and the InfoSource Source Specification card; the InfoItem screen's rep-field chips retired with archiver#307.
+Chip strip for selector suggestions with client-side re-sort. Used by the registration wizard (`register/_spec_suggestions.html`) only: the InfoSource Source Specification card borrows its JSON data island pattern but renders no chips, and the InfoItem screen's rep-field chips retired with archiver#307.
+
+**Chip markup** (#484): each chip is `.btn .btn--secondary .btn--sm .selector-chip`, holding a `.selector-chip__label` that wraps and a `.selector-chip__count` (`×N`) that doesn't, so a long xpath never widens the page ([STYLE.md](STYLE.md)).
 
 Uses the **JSON data island** pattern: chip data is placed in a `<script type="application/json">` child element so JSON never appears inside an HTML attribute (which would require escaping `"` and is fragile). `init()` reads and parses the script element on startup.
 
@@ -205,8 +207,8 @@ Uses the **JSON data island** pattern: chip data is placed in a `<script type="a
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:var(--space-1);">
       <template x-for="chip in chips" :key="chip.label">
-        <button type="button" class="btn btn--secondary btn--sm" @click="insertChip(chip.label, chip.value)">
-          <span x-text="chip.label"></span>&nbsp;<span class="text-muted" x-text="'×' + chip.frequency"></span>
+        <button type="button" class="btn btn--secondary btn--sm selector-chip" @click="insertChip(chip.label, chip.value)">
+          <span class="selector-chip__label" x-text="chip.label"></span><span class="text-muted selector-chip__count" x-text="'×' + chip.frequency"></span>
         </button>
       </template>
     </div>

@@ -6,6 +6,7 @@ import json
 import re
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 from co_core.effects.fetch import FetchResult
 from sqlalchemy import select
@@ -20,7 +21,8 @@ from src.core.models import (
 )
 from src.core.models.domain import Domain
 from src.core.tools.bind_info_source import bind_info_source
-from src.dashboard.routes.register import _specs_summary
+from src.core.tools.target_fetch import TargetHttpError
+from src.dashboard.routes.register import _specs_summary, _target_http_error_line
 
 _HEADERS = {"X-ExeDev-UserID": "ext-reg", "X-ExeDev-Email": "reg@example.com"}
 
@@ -711,15 +713,24 @@ _PREVIEW_SPEC = '[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fi
 
 
 class _StubFetcher:
-    def __init__(self, content: bytes, content_type: str = "text/html") -> None:
+    def __init__(
+        self,
+        content: bytes,
+        content_type: str = "text/html",
+        *,
+        status_code: int = 200,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self._content = content
         self._content_type = content_type
+        self._status_code = status_code
+        self._headers = headers or {}
 
     async def execute(self, effect) -> FetchResult:
         return FetchResult(
             content=self._content,
-            status_code=200,
-            headers={"content-type": self._content_type},
+            status_code=self._status_code,
+            headers={"content-type": self._content_type} | self._headers,
             duration_ms=5,
             fetcher_used="http",
         )
@@ -829,6 +840,58 @@ async def test_preview_with_no_selector_says_no_content(client, extraction):
     r = await _preview(client, _StubFetcher(b"<html><body></body></html>"), extraction)
     assert "No content extracted" in r.text
     assert "matched nothing" not in r.text
+
+
+_CHALLENGE_PAGE = (
+    b"<html><head><title>Just a moment...</title></head>"
+    b"<body><div class='target'>Enable JavaScript and cookies to continue</div></body></html>"
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("extraction", "untested"),
+    [
+        ('{"algorithm":"css","selector":".target"}', "The selector was not tested."),
+        ('{"algorithm":"css","selector":".nope"}', "The selector was not tested."),
+        ('{"algorithm":"full_page"}', "The spec was not tested."),
+    ],
+    ids=["css-matching-the-challenge", "css-missing", "full_page"],
+)
+async def test_preview_of_a_bot_challenge_is_one_status_error(client, extraction, untested):
+    """A 403 challenge is a fetch failure, not a selector miss or an excerpt (#473)."""
+    fetcher = _StubFetcher(_CHALLENGE_PAGE, status_code=403, headers={"cf-mitigated": "challenge"})
+    r = await _preview(client, fetcher, extraction)
+    assert r.status_code == 200
+    expected = (
+        "The target answered HTTP 403 Forbidden (Cloudflare bot challenge): "
+        f"nothing to extract. {untested}"
+    )
+    assert expected in r.text
+    assert r.text.count('class="text-sm text-danger"') == 1
+    assert "Ask the site's owner to allowlist it, or use another source." in r.text
+    for absent in (
+        "Retrieval successful",
+        "Extraction successful",
+        "matched nothing",
+        "No content extracted",
+        "Just a moment",
+        "Enable JavaScript",
+        "Fingerprint",
+    ):
+        assert absent not in r.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [404, 503])
+async def test_preview_of_an_error_status_names_it(client, status_code):
+    fetcher = _StubFetcher(_PREVIEW_HTML, status_code=status_code)
+    r = await _preview(client, fetcher, '{"algorithm":"full_page"}')
+    assert f"The target answered HTTP {status_code} " in r.text
+    assert "Cloudflare" not in r.text
+    assert "allowlist" not in r.text
+    assert "Retrieval successful" not in r.text
+    assert "My Preview Page" not in r.text  # no suggested name from an error page
 
 
 @pytest.mark.asyncio
@@ -1138,3 +1201,27 @@ async def test_url_check_case_b_reports_a_malformed_stored_spec(client, session)
 def test_specs_summary_matches_the_wizards(specs, summary):
     """The card's server-side summary mirrors the wizard's ``selectorSummary`` (CR 7)."""
     assert _specs_summary(specs) == summary
+
+
+def test_the_status_line_never_raises_on_an_unexpected_spec():
+    """CR 4: the card's error handler must not itself raise if the spec lacks ``extraction``."""
+    exc = TargetHttpError(404, challenge=False)
+    assert _target_http_error_line(exc, {}).endswith("The spec was not tested.")
+    assert _target_http_error_line(exc, {"extraction": None}).endswith("The spec was not tested.")
+
+
+class _UnreachableFetcher:
+    async def execute(self, effect) -> FetchResult:
+        raise httpx.ConnectError("[Errno -2] Name or service not known")
+
+
+@pytest.mark.asyncio
+async def test_preview_of_an_unreachable_target_says_so(client):
+    """CR 7: the transport failure reads like the status refusal beside it, not raw httpx text."""
+    r = await _preview(client, _UnreachableFetcher(), '{"algorithm":"full_page"}')
+    assert (
+        "The target could not be reached ([Errno -2] Name or service not known): "
+        "nothing to extract." in r.text
+    )
+    assert r.text.count('class="text-sm text-danger"') == 1
+    assert "Retrieval successful" not in r.text

@@ -28,15 +28,21 @@ HTML_FIXTURE = (
 DEFAULT_URL = "https://example.com"
 
 
-def _stub_fetcher(content: bytes = HTML_FIXTURE, *, raise_exc: Exception | None = None):
+def _stub_fetcher(
+    content: bytes = HTML_FIXTURE,
+    *,
+    raise_exc: Exception | None = None,
+    status_code: int = 200,
+    headers: dict[str, str] | None = None,
+):
     class _Stub:
         async def execute(self, effect):
             if raise_exc is not None:
                 raise raise_exc
             return FetchResult(
                 content=content,
-                status_code=200,
-                headers={"content-type": "text/html"},
+                status_code=status_code,
+                headers={"content-type": "text/html"} | (headers or {}),
                 duration_ms=5,
                 fetcher_used="http",
             )
@@ -111,6 +117,41 @@ async def test_preview_extraction_unreachable_target_returns_422_target_unreacha
     assert detail["kind"] == "domain"
     assert detail["errors"][0]["code"] == "target_unreachable"
     assert detail["errors"][0]["path"] == "/url"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status_code", "headers", "challenge", "message"),
+    [
+        (
+            403,
+            {"cf-mitigated": "challenge"},
+            True,
+            "target answered HTTP 403 Forbidden (Cloudflare bot challenge)",
+        ),
+        (404, {}, False, "target answered HTTP 404 Not Found"),
+        (503, {}, False, "target answered HTTP 503 Service Unavailable"),
+    ],
+    ids=["403-challenge", "404", "503"],
+)
+async def test_preview_extraction_non_2xx_returns_422_target_http_error(
+    client, status_code, headers, challenge, message
+):
+    """A captured error page is refused, not previewed (#473)."""
+    app.dependency_overrides[get_fetch_driver] = lambda: _stub_fetcher(
+        status_code=status_code, headers=headers
+    )
+    response = await client.post(
+        "/api/v1/tools/preview-extraction",
+        headers=HEADERS,
+        json={"url": DEFAULT_URL, "source_spec": VALID_CSS_SPEC},
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert detail["message"] == message
+    assert detail["errors"] == [{"path": "/url", "message": message, "code": "target_http_error"}]
+    assert detail["data"] == {"status_code": status_code, "challenge": challenge}
 
 
 @pytest.mark.asyncio

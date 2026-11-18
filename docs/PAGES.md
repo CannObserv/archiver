@@ -91,10 +91,14 @@ the reuse choice ([REGISTER.md](REGISTER.md)).
 suggestions from the URL's domain, grouped by algorithm, selector and
 `ignore_selectors` (#378), so a chip never carries another spec's exclusions.
 
+Step 2 is one column (`.stack`, #484): chips (`.selector-chip`, wrapping), then
+the editor, preview, Back/Next.
+
 **POST `/dashboard/register/preview`** - HTMX partial: attempts a preview
 extraction for `url` + `source_specs`, through the extractor Processor would
 dispatch for the response's media type (#317). A spec that extractor refuses
-(`css` on XML, `jsonpath` on HTML, an invalid `xpath`) renders as an error, one `path: message` line per validation error. A
+(`css` on XML, `jsonpath` on HTML, an invalid `xpath`) renders as an error, one `path: message` line per validation error.
+A non-2xx or unreachable target renders one line naming why, never "Retrieval successful." (#473). A
 selector that matches nothing (zero chunks) renders "The selector matched nothing", not an empty
 success (#356); `full_page` with no text keeps "No content extracted". Step 2's
 help text names those limits: CSS for HTML pages, XPath for HTML pages, XML and

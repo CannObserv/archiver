@@ -16,9 +16,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
 from bs4 import BeautifulSoup
-from co_core.effects.fetch import FetchContent
 from co_core.pure.extract import (
     Extractor,
     UnsupportedExtractionError,
@@ -34,6 +32,7 @@ from co_core.pure.extract.xml_feed import XmlExtractor
 from co_core_aio.fetch import AsyncFetchDriver
 
 from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
+from src.core.tools.target_fetch import fetch_2xx
 
 
 @dataclass(frozen=True)
@@ -56,10 +55,6 @@ class PreviewExtractionResult:
     fingerprint_algorithm: str
     computed_fingerprint: str
     page_title: str
-
-
-class TargetUnreachableError(Exception):
-    """Raised when the fetch leg of preview_extraction can't reach the target."""
 
 
 class ExtractionFailedError(Exception):
@@ -121,16 +116,15 @@ async def preview_extraction(
             ``css`` on XML, an invalid ``xpath``, cannobserv#523), or one of its
             CSS selectors doesn't compile (cannobserv#570).
         TargetUnreachableError: if the HTTP fetch fails (route layer → 422).
+        TargetHttpError: if the target answered a non-2xx: an error page or a bot
+            challenge is never extracted (#473; route layer → 422).
         ExtractionFailedError: if the extractor can't parse the body (route layer → 422).
     """
     ok, errors = validate_source_spec(source_spec)
     if not ok:
         raise SourceSpecValidationError(errors)
 
-    try:
-        fetch_result = await driver.execute(FetchContent(url))
-    except httpx.HTTPError as e:
-        raise TargetUnreachableError(str(e)) from e
+    fetch_result = await fetch_2xx(driver, url)
 
     try:
         extraction, page_title = await asyncio.to_thread(

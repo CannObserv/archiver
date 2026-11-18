@@ -18,6 +18,16 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.47.0 (2026-11-18)
+
+[service] **The authoring tools refuse a non-2xx fetch** (archiver#473). No migration. SDK unchanged (5.18.0): the regenerated client moves docstrings only (#473, #528); no type, method or status model changed.
+
+- **`POST /tools/preview-extraction`**: a target that answers a non-2xx (any status outside 200-299, a body-less 304 included) is a 422 `kind="domain"` with the new `code` `target_http_error`, `path` `/url`, and `data` `{status_code, challenge}`. The message names the status: `target answered HTTP 403 Forbidden (Cloudflare bot challenge)`. Nothing is extracted from the error page. It used to be a 200 with the error page's chunks and fingerprint, or none. `challenge` is true when the response carries `cf-mitigated: challenge`. The hint is advisory: archiver doesn't get past bot challenges.
+- **`POST /tools/propose-selectors`** gains the same two 422s, so it now documents error codes: `target_unreachable` (a transport error, an unhandled 500 before) and `target_http_error` (it used to propose selectors from the error page).
+- `POST /tools/fetch-and-render` is unchanged: it returns `status_code` to its caller.
+- `[both]` Docstrings only (archiver#528): `PATCH /info-items/{id}/rep-spec-assignments/{aid}`, its `InfoItemRepSpecPublicUrlPatch` body and the SDK's `patch_source_revision_cache` no longer say Replicator calls them, and `SourceRevisionCreate` no longer gives Watcher as its example client. No cohort service calls this API (#513): they are an operator's or an external caller's manual write-back. The routes stay.
+- Also in this release, with no contract path: the register wizard's preview card renders one status line for a refused fetch, with no "Retrieval successful." (#473), and register step 2 stacks the spec editor under the suggestions, with a long selector chip wrapping inside itself (#484).
+
 ## v4.46.1 (2026-11-17)
 
 [service] **No `/api/v1` request holds a transaction across an outbound wait** (archiver#521). No migration. SDK unchanged (5.18.0): no route, schema or status changes.

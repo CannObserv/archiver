@@ -7,7 +7,7 @@ controls: the registry republish trigger, DLQ triage (archiver#238), and
 dead-lettered outbox triage (archiver#191).
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from co_core_aio.fetch import AsyncFetchDriver
 from fastapi import APIRouter, Depends, Query, Request
@@ -84,10 +84,10 @@ from src.core.tools.find_info_item import find_info_item
 from src.core.tools.preview_extraction import (
     ExtractionFailedError,
     SourceSpecValidationError,
-    TargetUnreachableError,
     preview_extraction,
 )
 from src.core.tools.propose_selectors import propose_selectors
+from src.core.tools.target_fetch import TargetHttpError, TargetUnreachableError
 from src.core.watch_spec_schema.validator import validate_watch_spec
 
 if TYPE_CHECKING:
@@ -229,6 +229,27 @@ async def fetch_and_render_route(
     )
 
 
+def _raise_fetch_refusal(e: TargetUnreachableError | TargetHttpError) -> NoReturn:
+    """422 ``kind="domain"`` for a refused fetch, shared by preview and propose (#473).
+
+    ``target_unreachable``: a transport error. ``target_http_error``: the target
+    answered a non-2xx, so nothing was read; ``data`` carries ``status_code`` and
+    ``challenge`` (``cf-mitigated: challenge``, advisory only) beside the message.
+    """
+    if isinstance(e, TargetHttpError):
+        code = "target_http_error"
+        data = {"status_code": e.status_code, "challenge": e.challenge}
+    else:
+        code, data = "target_unreachable", None
+    raise_422(
+        str(e),
+        kind="domain",
+        errors=[FieldError(path="/url", message=str(e), code=code)],
+        data=data,
+        source_exc=e,
+    )
+
+
 @router.post("/preview-extraction", response_model=PreviewExtractionResult)
 async def preview_extraction_route(
     body: PreviewExtractionRequest,
@@ -244,8 +265,11 @@ async def preview_extraction_route(
     Returns 422 with the standard error envelope: ``kind="schema"`` when the spec
     fails validation or no extractor honours it on this body (``css`` on XML,
     ``jsonpath`` on HTML, ``css`` or ``xpath`` on JSON, an invalid ``xpath`` or
-    ``jsonpath``), ``kind="domain"`` with ``code`` ``target_unreachable`` or
-    ``extraction_failed`` (the body would not parse).
+    ``jsonpath``), ``kind="domain"`` with ``code`` ``target_unreachable`` (the
+    fetch failed), ``target_http_error`` (the target answered a non-2xx, e.g. a
+    403 bot challenge: nothing is extracted, and ``data`` carries
+    ``status_code`` and ``challenge``) or ``extraction_failed`` (the body would
+    not parse).
     """
     try:
         result = await preview_extraction(driver, body.url, body.source_spec)
@@ -257,13 +281,8 @@ async def preview_extraction_route(
             or [FieldError(path="", message=str(e))],
             source_exc=e,
         )
-    except TargetUnreachableError as e:
-        raise_422(
-            str(e),
-            kind="domain",
-            errors=[FieldError(path="/url", message=str(e), code="target_unreachable")],
-            source_exc=e,
-        )
+    except (TargetUnreachableError, TargetHttpError) as e:
+        _raise_fetch_refusal(e)
     except ExtractionFailedError as e:
         raise_422(
             str(e),
@@ -305,8 +324,19 @@ async def propose_selectors_route(
     volatility penalty (hash-looking class names get demoted). Empty match
     set returns ``[]``. Operators always verify the chosen selector via
     ``preview_extraction`` before persisting a SourceSpec.
+
+    Returns 422 with the standard error envelope, ``kind="domain"``, as
+    ``preview-extraction`` does (#473): ``code`` ``target_unreachable`` (the
+    fetch failed) or ``target_http_error`` (the target answered a non-2xx, e.g.
+    a 403 bot challenge: nothing is proposed, and ``data`` carries
+    ``status_code`` and ``challenge``).
     """
-    candidates = await propose_selectors(driver, str(body.url), body.description, top_k=body.top_k)
+    try:
+        candidates = await propose_selectors(
+            driver, str(body.url), body.description, top_k=body.top_k
+        )
+    except (TargetUnreachableError, TargetHttpError) as e:
+        _raise_fetch_refusal(e)
     return [
         SelectorCandidateOut(
             selector=c.selector,

@@ -107,9 +107,11 @@ def sync_detailed(
 
      Write a provider-native public URL back to a RepSpec assignment.
 
-    Called by Replicator after a successful replication job. Works on both
-    active and deactivated rows (history preservation). Returns 404 if the
-    assignment doesn't exist or doesn't belong to the given InfoItem.
+    The manual write-back, for an operator or an external ``archiver-client``
+    caller. No cohort service calls it (#513): a replication's ``public_url``
+    is written by Archiver itself from ``content.artifacts`` (archiver#170).
+    Works on both active and deactivated rows (history preservation). Returns
+    404 if the assignment doesn't exist or doesn't belong to the given InfoItem.
 
     Args:
         info_item_id (str):
@@ -118,7 +120,8 @@ def sync_detailed(
             assignments/{assignment_id}.
 
             Writes the provider-native public URL back to an assignment row (active or
-            deactivated). Called by Replicator after a successful replication job.
+            deactivated): the manual write-back, for an operator or an external caller.
+            A replication's ``public_url`` arrives over ``content.artifacts`` instead.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -152,9 +155,11 @@ def sync(
 
      Write a provider-native public URL back to a RepSpec assignment.
 
-    Called by Replicator after a successful replication job. Works on both
-    active and deactivated rows (history preservation). Returns 404 if the
-    assignment doesn't exist or doesn't belong to the given InfoItem.
+    The manual write-back, for an operator or an external ``archiver-client``
+    caller. No cohort service calls it (#513): a replication's ``public_url``
+    is written by Archiver itself from ``content.artifacts`` (archiver#170).
+    Works on both active and deactivated rows (history preservation). Returns
+    404 if the assignment doesn't exist or doesn't belong to the given InfoItem.
 
     Args:
         info_item_id (str):
@@ -163,7 +168,8 @@ def sync(
             assignments/{assignment_id}.
 
             Writes the provider-native public URL back to an assignment row (active or
-            deactivated). Called by Replicator after a successful replication job.
+            deactivated): the manual write-back, for an operator or an external caller.
+            A replication's ``public_url`` arrives over ``content.artifacts`` instead.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -192,9 +198,11 @@ async def asyncio_detailed(
 
      Write a provider-native public URL back to a RepSpec assignment.
 
-    Called by Replicator after a successful replication job. Works on both
-    active and deactivated rows (history preservation). Returns 404 if the
-    assignment doesn't exist or doesn't belong to the given InfoItem.
+    The manual write-back, for an operator or an external ``archiver-client``
+    caller. No cohort service calls it (#513): a replication's ``public_url``
+    is written by Archiver itself from ``content.artifacts`` (archiver#170).
+    Works on both active and deactivated rows (history preservation). Returns
+    404 if the assignment doesn't exist or doesn't belong to the given InfoItem.
 
     Args:
         info_item_id (str):
@@ -203,7 +211,8 @@ async def asyncio_detailed(
             assignments/{assignment_id}.
 
             Writes the provider-native public URL back to an assignment row (active or
-            deactivated). Called by Replicator after a successful replication job.
+            deactivated): the manual write-back, for an operator or an external caller.
+            A replication's ``public_url`` arrives over ``content.artifacts`` instead.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -235,9 +244,11 @@ async def asyncio(
 
      Write a provider-native public URL back to a RepSpec assignment.
 
-    Called by Replicator after a successful replication job. Works on both
-    active and deactivated rows (history preservation). Returns 404 if the
-    assignment doesn't exist or doesn't belong to the given InfoItem.
+    The manual write-back, for an operator or an external ``archiver-client``
+    caller. No cohort service calls it (#513): a replication's ``public_url``
+    is written by Archiver itself from ``content.artifacts`` (archiver#170).
+    Works on both active and deactivated rows (history preservation). Returns
+    404 if the assignment doesn't exist or doesn't belong to the given InfoItem.
 
     Args:
         info_item_id (str):
@@ -246,7 +257,8 @@ async def asyncio(
             assignments/{assignment_id}.
 
             Writes the provider-native public URL back to an assignment row (active or
-            deactivated). Called by Replicator after a successful replication job.
+            deactivated): the manual write-back, for an operator or an external caller.
+            A replication's ``public_url`` arrives over ``content.artifacts`` instead.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
