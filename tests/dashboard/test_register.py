@@ -20,7 +20,8 @@ from src.core.models import (
 )
 from src.core.models.domain import Domain
 from src.core.tools.bind_info_source import bind_info_source
-from src.dashboard.routes.register import _specs_summary
+from src.core.tools.target_fetch import TargetHttpError
+from src.dashboard.routes.register import _specs_summary, _target_http_error_line
 
 _HEADERS = {"X-ExeDev-UserID": "ext-reg", "X-ExeDev-Email": "reg@example.com"}
 
@@ -1199,3 +1200,10 @@ async def test_url_check_case_b_reports_a_malformed_stored_spec(client, session)
 def test_specs_summary_matches_the_wizards(specs, summary):
     """The card's server-side summary mirrors the wizard's ``selectorSummary`` (CR 7)."""
     assert _specs_summary(specs) == summary
+
+
+def test_the_status_line_never_raises_on_an_unexpected_spec():
+    """CR 4: the card's error handler must not itself raise if the spec lacks ``extraction``."""
+    exc = TargetHttpError(404, challenge=False)
+    assert _target_http_error_line(exc, {}).endswith("The spec was not tested.")
+    assert _target_http_error_line(exc, {"extraction": None}).endswith("The spec was not tested.")
