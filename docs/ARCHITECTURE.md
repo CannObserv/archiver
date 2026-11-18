@@ -447,7 +447,8 @@ the canonical implementation upstreamed in cannobserv#255. The former
 Phase 1b landed — **no more mirror discipline for the acquisition pipeline.**
 
 - **Fetch** — `co_core_aio.fetch.AsyncFetchDriver` executes the `co_core.effects.fetch.FetchContent`
-  effect (raw bytes, captures non-2xx as `FetchResult`). Wired into `app.state.fetch_driver`
+  effect (raw bytes, captures non-2xx as `FetchResult`; preview and propose-selectors refuse
+  one through `src/core/tools/target_fetch.py`, #473). Wired into `app.state.fetch_driver`
   at the FastAPI composition root (`main.lifespan`), injected via `deps.get_fetch_driver`.
 - **Extract + fingerprint** — `co_core.pure.extract.*` (`html`/`csv_excel`/`pdf`/`xml_feed`
   extractors, **synchronous**; `sha256` + `simhash` per `Chunk`). Requires the **`co-core[extract]`**
