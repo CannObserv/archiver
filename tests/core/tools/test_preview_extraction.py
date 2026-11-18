@@ -15,10 +15,9 @@ from src.core.tools.preview_extraction import (
     ExtractionFailedError,
     PreviewExtractionResult,
     SourceSpecValidationError,
-    TargetUnreachableError,
     preview_extraction,
 )
-from src.core.tools.target_fetch import TargetHttpError
+from src.core.tools.target_fetch import TargetHttpError, TargetUnreachableError
 
 HTML_FIXTURE = (
     b"<html><body><div class='target'>kept content</div><div>dropped content</div></body></html>"
