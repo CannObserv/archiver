@@ -106,7 +106,11 @@ def test_dry_run_prints_no_password(url: str) -> None:
 
 @pytest.mark.parametrize("url", SERVED_URLS.values(), ids=SERVED_URLS.keys())
 def test_launch_prints_no_password(url: str, fake_uv: Path) -> None:
-    """The migrate and launch lines, the path the 2026-10-28 leak took."""
+    """The migrate and launch lines, the path the 2026-10-28 leak took.
+
+    The script's own lines only: the fake ``uv`` runs neither alembic nor
+    uvicorn, whose output is outside ``mask_url`` (a known limit on #448).
+    """
     result = run({"ARCHIVER_DEV_DATABASE_URL": url}, launch_bin=fake_uv)
     assert result.returncode == 0, result.stderr
     assert "alembic upgrade head" in result.stdout
