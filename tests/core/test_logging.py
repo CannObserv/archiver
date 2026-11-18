@@ -5,6 +5,8 @@ import logging
 import logging.config
 from pathlib import Path
 
+import pytest
+
 from src.core.logging import (
     ColorMessageFilter,
     CredentialRedactingFilter,
@@ -149,6 +151,30 @@ def test_credential_filter_redacts_a_url_in_the_message_and_its_args():
         "cannot connect to postgresql+asyncpg://archiver:***@localhost:5432/archiver"
     )
     assert "hunter2" not in record.getMessage()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        # A library's own DSN line, sliced past the '@' or never credentialed:
+        # no scheme://user:password@ for the userinfo rule to find (#448).
+        ("localhost:5432/archiver?password=hunter2", "localhost:5432/archiver?password=***"),
+        (
+            "postgresql://u@db/archiver?sslmode=require&PASSWORD=hunter2&x=1",
+            "postgresql://u@db/archiver?sslmode=require&PASSWORD=***&x=1",
+        ),
+        ("redis://broker:6379/0?password=hunter2#f", "redis://broker:6379/0?password=***#f"),
+        # Not a query parameter: prose that says password= is left alone.
+        ("set password=hunter2 in the form", "set password=hunter2 in the form"),
+    ],
+)
+def test_credential_filter_redacts_a_password_query_parameter(value: str, expected: str) -> None:
+    """libpq, asyncpg and redis-py all take ``?password=`` (#448)."""
+    record = logging.LogRecord("x", logging.INFO, __file__, 1, "engine created", None, None)
+    record.url = value
+
+    assert CredentialRedactingFilter().filter(record) is True
+    assert record.url == expected
 
 
 def test_credential_filter_leaves_a_credential_free_url_alone():
