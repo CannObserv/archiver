@@ -23,7 +23,10 @@ resolution equals `ARCHIVER_DATABASE_URL` or `DATABASE_URL`; clears the
 against the dev database before serving. It takes only `ARCHIVER_DEV_*` and
 `TEST_DATABASE_URL` from the repo `.env`, never `/etc/archiver/.env`
 ([DEPLOYMENT.md](DEPLOYMENT.md) § Parse env files, never source them), and
-unsets the `GH_TOKEN` an agent session inherits from `gh-env.sh` (#466). This mirrors `_check_test_url_safety`
+unsets the `GH_TOKEN` an agent session inherits from `gh-env.sh` (#466). Every
+URL it prints (dry-run report, migrate and launch lines, refusals) goes through
+one function, `mask_url`: `user:***@host:port/db`, any query `?***`, an
+ambiguous value withheld whole (#448). This mirrors `_check_test_url_safety`
 in `tests/conftest.py`, which guards pytest but not a hand-run server.
 
 ## Dev-server knobs

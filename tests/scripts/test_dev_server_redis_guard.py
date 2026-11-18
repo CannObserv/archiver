@@ -116,7 +116,7 @@ def test_distinct_db_index_on_same_broker_is_refused() -> None:
     )
     assert result.returncode == 1
     assert "same broker" in result.stderr
-    assert "s3cret" not in result.stderr  # names host:port, never prod's credentials
+    assert "s3cret" not in result.stderr  # names the masked URL, never prod's credentials
 
 
 def test_refusal_names_a_local_throwaway_not_a_db_index() -> None:
@@ -193,8 +193,8 @@ def test_same_unix_socket_is_refused() -> None:
 
 
 def test_unix_socket_refusal_does_not_claim_host_port() -> None:
-    """The refusal names the identity it compared — for a socket that is a
-    path, so the message must not describe it as host:port."""
+    """The refusal names the socket, masked (archiver#448), and must not
+    describe it as host:port."""
     result = _run(
         {
             "ARCHIVER_REDIS_URL": "unix:///run/redis/redis.sock",
@@ -202,7 +202,7 @@ def test_unix_socket_refusal_does_not_claim_host_port() -> None:
         }
     )
     assert result.returncode == 1
-    assert "unix:/run/redis/redis.sock" in result.stderr
+    assert "unix:///run/redis/redis.sock?***" in result.stderr
     assert "host:port" not in result.stderr
 
 

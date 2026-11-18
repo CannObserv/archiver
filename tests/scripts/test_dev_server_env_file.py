@@ -63,7 +63,7 @@ def test_dry_run_loads_the_dev_key_and_not_the_token(env_file: Path) -> None:
         {"ARCHIVER_DEV_SERVER_DRY_RUN": "1", "ARCHIVER_DEV_SERVER_ENV_FILE": str(env_file)}
     )
     assert result.returncode == 0, result.stderr
-    assert _report(result.stdout, "ARCHIVER_DATABASE_URL") == DEV_URL
+    assert _report(result.stdout, "ARCHIVER_DATABASE_URL") == DEV_URL.replace(":p@", ":***@")
     assert _report(result.stdout, "ENV_NAMES") == "ARCHIVER_DEV_DATABASE_URL"
     for text in ("GH_TOKEN", "ANTHROPIC_API_KEY", SECRET):
         assert text not in result.stdout + result.stderr

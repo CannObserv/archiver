@@ -59,6 +59,45 @@ fi
 # (#466), so it arrives inherited, not from the file. uvicorn needs it no more.
 unset GH_TOKEN
 
+# mask_url <url> — <url> safe to print: `scheme://user:***@host:port/path?***`
+# (archiver#448). Every URL this script prints goes through it. Its output lands
+# in task logs and agent transcripts, and the dev database URL carries
+# archiver_agent's password. It keeps what a reader needs to confirm the target
+# (user, host, port, database) and replaces the password and any query string:
+# libpq and asyncpg both take `?password=`. The guards never read its output;
+# they parse the raw value.
+#
+# Credentials end at the authority's last '@', as urlsplit and redis-py read
+# them, so a raw '@' in a password is masked whole. An '@' after the authority
+# means a raw '/', '?' or '#' inside a password ended it early. Nothing printed
+# from that is safe, so the whole value is withheld, as it is for anything that
+# is not scheme://….
+mask_url() {
+  local url="$1" scheme rest authority tail path userinfo
+  [[ -z "$url" ]] && return 0
+  local withheld="(value withheld: not a well-formed URL)"
+  case "$url" in
+    *://*) ;;
+    *) printf '%s' "$withheld"; return 0 ;;
+  esac
+  scheme="${url%%://*}"
+  rest="${url#*://}"
+  authority="${rest%%[/?#]*}"
+  tail="${rest:${#authority}}"
+  if [[ ! "$scheme" =~ ^[A-Za-z][A-Za-z0-9+.-]*$ || "$tail" == *@* ]]; then
+    printf '%s' "$withheld"
+    return 0
+  fi
+  if [[ "$authority" == *@* ]]; then
+    userinfo="${authority%@*}"
+    [[ "$userinfo" == *:* ]] && userinfo="${userinfo%%:*}:***"
+    authority="$userinfo@${authority##*@}"
+  fi
+  path="${tail%%[?#]*}"
+  [[ "$tail" != "$path" ]] && path+="?***"
+  printf '%s://%s%s' "$scheme" "$authority" "$path"
+}
+
 PORT="${ARCHIVER_DEV_PORT:-8001}"
 
 # Loopback only, and no knob (archiver#517). The dashboard trusts X-ExeDev-*
@@ -122,7 +161,10 @@ DEV_DB_NAME="$(db_name "$DEV_URL")"
 case "$DEV_DB_NAME" in
   *_test | *_dev) ;;
   *)
-    echo "dev_server: refusing to start against database '${DEV_DB_NAME:-<unparseable>}'." >&2
+    # Named from the masked URL: a raw '@' and '/' in a password can leave a
+    # piece of it in the raw name (archiver#448). The verdict used the raw one.
+    SHOWN_DB_NAME="$(db_name "$(mask_url "$DEV_URL")")"
+    echo "dev_server: refusing to start against database '${SHOWN_DB_NAME:-<unparseable>}'." >&2
     echo "  The dev database name must end in '_test' or '_dev'; anything else" >&2
     echo "  is treated as production (see archiver 2026-07-18 incident, where" >&2
     echo "  a dev server wrote into the production registry)." >&2
@@ -137,6 +179,7 @@ esac
 # production value there would reopen the hole from the other side.
 export ARCHIVER_DATABASE_URL="$DEV_URL"
 unset DATABASE_URL
+DB_REPORT="$(mask_url "$DEV_URL")" # every print of the URL is this one
 
 # redis_identity <url> — normalized `host:port` for a redis[s] URL
 # (`unix:<path>` for a socket), or empty for empty input. The equality guard
@@ -197,11 +240,15 @@ PROD_REDIS_URL="${ARCHIVER_REDIS_URL:-}"
 DEV_REDIS_URL="${ARCHIVER_DEV_REDIS_URL:-}"
 if [[ -n "$DEV_REDIS_URL" ]]; then
   DEV_REDIS_ID="$(redis_identity "$DEV_REDIS_URL")"
+  # Refusals name the masked URL, never the identity: redis_identity drops
+  # credentials only up to the first '@', so a raw '@' in a password leaves
+  # its tail in the identity (archiver#448).
+  SHOWN_REDIS_URL="$(mask_url "$DEV_REDIS_URL")"
   if [[ "$DEV_REDIS_ID" == "$(redis_identity "$PROD_REDIS_URL")" ]]; then
-    echo "dev_server: refusing — ARCHIVER_DEV_REDIS_URL addresses the same broker" >&2
-    echo "  as the production ARCHIVER_REDIS_URL ($DEV_REDIS_ID, by normalized" >&2
-    echo "  address; a different DB index is no boundary). Leave it unset to run" >&2
-    echo "  bus-dormant, or use a local throwaway broker:" >&2
+    echo "dev_server: refusing — ARCHIVER_DEV_REDIS_URL ($SHOWN_REDIS_URL)" >&2
+    echo "  addresses the same broker as the production ARCHIVER_REDIS_URL (by" >&2
+    echo "  normalized address; a different DB index is no boundary). Leave it" >&2
+    echo "  unset to run bus-dormant, or use a local throwaway broker:" >&2
     echo "    docker run --rm -p 127.0.0.1:6380:6379 redis:7" >&2
     echo "    ARCHIVER_DEV_REDIS_URL=redis://127.0.0.1:6380/0" >&2
     exit 1
@@ -212,7 +259,7 @@ if [[ -n "$DEV_REDIS_URL" ]]; then
   case "$DEV_REDIS_ID" in
     127.0.0.1:* | unix:*) ;; # redis_identity folds every loopback spelling
     *)
-      echo "dev_server: refusing — ARCHIVER_DEV_REDIS_URL ($DEV_REDIS_ID) is" >&2
+      echo "dev_server: refusing — ARCHIVER_DEV_REDIS_URL ($SHOWN_REDIS_URL) is" >&2
       echo "  not a local broker. A dev server runs bus-dormant (leave it unset)" >&2
       echo "  or on a local throwaway, never the shared broker:" >&2
       echo "    docker run --rm -p 127.0.0.1:6380:6379 redis:7" >&2
@@ -221,7 +268,7 @@ if [[ -n "$DEV_REDIS_URL" ]]; then
       ;;
   esac
   export ARCHIVER_REDIS_URL="$DEV_REDIS_URL"
-  REDIS_REPORT="$ARCHIVER_REDIS_URL"
+  REDIS_REPORT="$(mask_url "$ARCHIVER_REDIS_URL")"
 else
   # No explicit dev broker → run bus-dormant rather than inherit prod's URL.
   unset ARCHIVER_REDIS_URL
@@ -248,7 +295,7 @@ if [[ -n "$DEV_PM_KEY" ]]; then
   export ARCHIVER_POWER_MAP_API_KEY="$DEV_PM_KEY"
   if [[ -n "$DEV_PM_URL" ]]; then
     export ARCHIVER_POWER_MAP_BASE_URL="$DEV_PM_URL"
-    POWER_MAP_REPORT="$DEV_PM_URL (dev key)"
+    POWER_MAP_REPORT="$(mask_url "$DEV_PM_URL") (dev key)"
   else
     POWER_MAP_REPORT="(default base URL, dev key)"
   fi
@@ -320,7 +367,7 @@ fi
 unset DEV_NOTIFIER_KEY
 # From what is exported, not from the inputs: the report shows what uvicorn gets.
 if [[ "${ARCHIVER_NOTIFIER_ENABLED:-}" == "1" ]]; then
-  NOTIFIER_REPORT="$ARCHIVER_NOTIFIER_BASE_URL (dev key)"
+  NOTIFIER_REPORT="$(mask_url "$ARCHIVER_NOTIFIER_BASE_URL") (dev key)"
 else
   NOTIFIER_REPORT="(dormant)"
 fi
@@ -355,11 +402,11 @@ if [[ "${ARCHIVER_DEV_SKIP_MIGRATE:-}" == "1" ]]; then
   MIGRATE_REPORT="(skipped)"
 else
   DO_MIGRATE=1
-  MIGRATE_REPORT="$ARCHIVER_DATABASE_URL"
+  MIGRATE_REPORT="$DB_REPORT"
 fi
 
 if [[ "${ARCHIVER_DEV_SERVER_DRY_RUN:-}" == "1" ]]; then
-  echo "ARCHIVER_DATABASE_URL=$ARCHIVER_DATABASE_URL"
+  echo "ARCHIVER_DATABASE_URL=$DB_REPORT"
   echo "DATABASE_URL=(cleared)"
   echo "HOST=$HOST"
   echo "PORT=$PORT"
@@ -376,10 +423,10 @@ fi
 cd "$REPO_ROOT"
 
 if [[ "$DO_MIGRATE" == "1" ]]; then
-  echo "dev_server: alembic upgrade head → $ARCHIVER_DATABASE_URL"
+  echo "dev_server: alembic upgrade head → $DB_REPORT"
   uv run alembic upgrade head
 fi
 
-echo "dev_server: port $PORT → $ARCHIVER_DATABASE_URL"
+echo "dev_server: port $PORT → $DB_REPORT"
 exec uv run uvicorn src.api.main:app --host "$HOST" --port "$PORT" --reload \
   --log-config src/core/log_config.json
