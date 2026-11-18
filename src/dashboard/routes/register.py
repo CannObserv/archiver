@@ -47,7 +47,7 @@ from src.core.tools.create_info_source import (
     create_info_source,
 )
 from src.core.tools.preview_extraction import SourceSpecValidationError, preview_extraction
-from src.core.tools.target_fetch import TargetHttpError
+from src.core.tools.target_fetch import TargetHttpError, TargetUnreachableError
 from src.core.tools.update_info_source_specs import (
     InvalidSourceSpecError as UpdateInvalidSpecError,
 )
@@ -377,6 +377,8 @@ async def preview(
             errors = [f"{err['path']}: {err['message']}" for err in exc.errors]
         elif isinstance(exc, TargetHttpError):
             errors = [_target_http_error_line(exc, spec)]
+        elif isinstance(exc, TargetUnreachableError):
+            errors = [f"The target could not be reached ({exc}): nothing to extract."]
         else:
             errors = [str(exc)]
         return _templates.TemplateResponse(

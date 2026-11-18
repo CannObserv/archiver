@@ -6,6 +6,7 @@ import json
 import re
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 from co_core.effects.fetch import FetchResult
 from sqlalchemy import select
@@ -1207,3 +1208,20 @@ def test_the_status_line_never_raises_on_an_unexpected_spec():
     exc = TargetHttpError(404, challenge=False)
     assert _target_http_error_line(exc, {}).endswith("The spec was not tested.")
     assert _target_http_error_line(exc, {"extraction": None}).endswith("The spec was not tested.")
+
+
+class _UnreachableFetcher:
+    async def execute(self, effect) -> FetchResult:
+        raise httpx.ConnectError("[Errno -2] Name or service not known")
+
+
+@pytest.mark.asyncio
+async def test_preview_of_an_unreachable_target_says_so(client):
+    """CR 7: the transport failure reads like the status refusal beside it, not raw httpx text."""
+    r = await _preview(client, _UnreachableFetcher(), '{"algorithm":"full_page"}')
+    assert (
+        "The target could not be reached ([Errno -2] Name or service not known): "
+        "nothing to extract." in r.text
+    )
+    assert r.text.count('class="text-sm text-danger"') == 1
+    assert "Retrieval successful" not in r.text

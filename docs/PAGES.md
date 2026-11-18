@@ -98,7 +98,7 @@ the editor, preview, Back/Next.
 extraction for `url` + `source_specs`, through the extractor Processor would
 dispatch for the response's media type (#317). A spec that extractor refuses
 (`css` on XML, `jsonpath` on HTML, an invalid `xpath`) renders as an error, one `path: message` line per validation error.
-A non-2xx target renders one line naming its status, never "Retrieval successful." (#473). A
+A non-2xx or unreachable target renders one line naming why, never "Retrieval successful." (#473). A
 selector that matches nothing (zero chunks) renders "The selector matched nothing", not an empty
 success (#356); `full_page` with no text keeps "No content extracted". Step 2's
 help text names those limits: CSS for HTML pages, XPath for HTML pages, XML and
