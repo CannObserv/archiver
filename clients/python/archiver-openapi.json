@@ -1436,7 +1436,7 @@
       },
       "InfoItemRepSpecPublicUrlPatch": {
         "additionalProperties": false,
-        "description": "Request body for PATCH /info-items/{id}/rep-spec-assignments/{assignment_id}.\n\nWrites the provider-native public URL back to an assignment row (active or\ndeactivated). Called by Replicator after a successful replication job.",
+        "description": "Request body for PATCH /info-items/{id}/rep-spec-assignments/{assignment_id}.\n\nWrites the provider-native public URL back to an assignment row (active or\ndeactivated): the manual write-back, for an operator or an external caller.\nA replication's ``public_url`` arrives over ``content.artifacts`` instead.",
         "properties": {
           "public_url": {
             "description": "Provider-native public URL of the replicated artefact.",
@@ -5495,7 +5495,7 @@
         ]
       },
       "patch": {
-        "description": "Write a provider-native public URL back to a RepSpec assignment.\n\nCalled by Replicator after a successful replication job. Works on both\nactive and deactivated rows (history preservation). Returns 404 if the\nassignment doesn't exist or doesn't belong to the given InfoItem.",
+        "description": "Write a provider-native public URL back to a RepSpec assignment.\n\nThe manual write-back, for an operator or an external ``archiver-client``\ncaller. No cohort service calls it (#513): a replication's ``public_url``\nis written by Archiver itself from ``content.artifacts`` (archiver#170).\nWorks on both active and deactivated rows (history preservation). Returns\n404 if the assignment doesn't exist or doesn't belong to the given InfoItem.",
         "operationId": "patch_rep_spec_assignment_public_url_api_v1_info_items__info_item_id__rep_spec_assignments__assignment_id__patch",
         "parameters": [
           {

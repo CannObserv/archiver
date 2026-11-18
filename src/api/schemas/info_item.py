@@ -48,7 +48,8 @@ class InfoItemRepSpecPublicUrlPatch(BaseModel):
     """Request body for PATCH /info-items/{id}/rep-spec-assignments/{assignment_id}.
 
     Writes the provider-native public URL back to an assignment row (active or
-    deactivated). Called by Replicator after a successful replication job.
+    deactivated): the manual write-back, for an operator or an external caller.
+    A replication's ``public_url`` arrives over ``content.artifacts`` instead.
     """
 
     model_config = {"extra": "forbid"}

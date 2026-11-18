@@ -810,9 +810,11 @@ async def patch_rep_spec_assignment_public_url(
 ) -> InfoItemRepSpecOut:
     """Write a provider-native public URL back to a RepSpec assignment.
 
-    Called by Replicator after a successful replication job. Works on both
-    active and deactivated rows (history preservation). Returns 404 if the
-    assignment doesn't exist or doesn't belong to the given InfoItem.
+    The manual write-back, for an operator or an external ``archiver-client``
+    caller. No cohort service calls it (#513): a replication's ``public_url``
+    is written by Archiver itself from ``content.artifacts`` (archiver#170).
+    Works on both active and deactivated rows (history preservation). Returns
+    404 if the assignment doesn't exist or doesn't belong to the given InfoItem.
     """
     try:
         assign_ulid = ULID.from_str(assignment_id)
