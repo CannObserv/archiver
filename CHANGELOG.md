@@ -25,6 +25,7 @@ service-only patch does not require an SDK bump.
 - **`require_api_key` commits its `last_used_at` write.** It used to flush and leave the transaction open for the whole request, holding the key's row lock across Power Map, fetch and broker waits. That serialized concurrent same-key requests, and the stamp was rolled back on every route that never commits. `last_used_at` now advances on reads too.
 - **`PUT /info-items/{id}/org`** ends its read of the item before the Power Map call. An unknown item is still a 404.
 - Also in this release, with no contract path: the app engine pre-pings each pooled connection, so a Postgres restart with archiver up costs no request (archiver#510).
+- `[sdk]` Docs only, after this release (archiver#513): `clients/python/README.md` no longer says Watcher and Replicator path-install the SDK. No cohort service depends on it, so the install note now says so. No SDK code, type or method changed, so `archiver-client` stays at 5.18.0, and nothing deploys.
 
 ## v4.46.0 (2026-11-11)
 

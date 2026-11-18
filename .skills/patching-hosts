@@ -79,11 +79,10 @@ hold tailscale tailscale-archive-keyring tailscale
 owner /srv/archiver/live self
 
 # --- callers --------------------------------------------------------------
-# Replicator reads through archiver-client. Watcher makes no HTTP call either
-# way: the edge is bus-only (#142). A private repo's service that calls this
-# host gets no line, since one would publish its name (knob.md): the run
-# tells it by hand.
-caller CannObserv/replicator
+# None (#513). No cohort repo calls this host's API: Watcher reaches it over
+# the bus only (#142), Replicator over the bus and GCS. A private repo's
+# service that calls this host gets no line, since one would publish its name
+# (knob.md): the run tells it by hand.
 
 # --- exceptions -----------------------------------------------------------
 exception database:archiver_test 2027-05-31 the suite's database (tests/conftest.py), its schema dropped every session; nothing in it to recover

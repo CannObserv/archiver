@@ -24,7 +24,9 @@ The same treatment covers the sweep step's four telemetry variables
 37 of 42 rows: a sweep that never ran, or a variable the record step never
 forwards, writes ``null`` into the ledger field and the job stays green. So the
 exports are paired with the flags that consume them, and the step is run with
-stub check scripts to prove each number survives the round trip.
+stub check scripts to prove each number survives the round trip. Since
+gregoryfoster/skills#526, a check that prints no number fails the step rather
+than recording the field as missing.
 """
 
 import re
@@ -137,17 +139,16 @@ def _exported(project: Path) -> dict[str, str]:
 
 
 def _run_sweep(project: Path, **extra_env: str) -> subprocess.CompletedProcess:
-    """Execute the sweep step against stub check scripts.
+    """Execute the sweep step against stub check scripts, verbatim.
 
-    The step writes its scratch files to ``/tmp`` by name, which two suites
-    running at once would share; the redirects are re-pointed into ``project``
-    so the run is hermetic. Nothing else is rewritten - the sed extraction and
-    the ``$GITHUB_ENV`` appends under test are the workflow's own text.
+    The step takes its scratch files from ``mktemp`` (gregoryfoster/skills#526),
+    pointed into ``project`` by ``TMPDIR`` so the run is hermetic. A fixed
+    ``/tmp`` path would be shared with every other run on the machine, so the
+    step must not name one.
     """
-    raw = _step_body(SWEEP_STEP)
-    body = raw.replace("/tmp/", f"{project}/")
-    assert body != raw, "the sweep step's scratch paths were not re-pointed"
-    return _run_step(body, project, **extra_env)
+    body = _step_body(SWEEP_STEP)
+    assert "/tmp/" not in body, "the sweep step names a shared scratch path"
+    return _run_step(body, project, TMPDIR=str(project), **extra_env)
 
 
 def _stub(project: Path, name: str, *, prints: str, exit_code: int = 0) -> str:
@@ -303,12 +304,14 @@ def test_the_sweep_exports_every_number_it_read(tmp_path: Path) -> None:
     }
 
 
-def test_a_check_that_printed_no_number_exports_nothing_for_it(tmp_path: Path) -> None:
-    """Empty, not zero: `${COUNTS:+...}` then drops the flag (#249).
+def test_a_check_that_printed_no_number_fails_the_sweep(tmp_path: Path) -> None:
+    """A lost count, never a zero, and never a row with the field missing.
 
     A check that crashed knows nothing about the surface. Exporting `0` would
-    record "no unjudged counts" on the strength of a traceback; the empty
-    string omits the flag and the field is honestly null.
+    record "no unjudged counts" on the strength of a traceback. Until
+    gregoryfoster/skills#526 the step exported it empty and the row went out
+    with the field null (#249); now the step fails by name before it writes
+    to ``GITHUB_ENV``, so no half-swept row is recorded.
     """
     result = _run_sweep(
         tmp_path,
@@ -317,8 +320,6 @@ def test_a_check_that_printed_no_number_exports_nothing_for_it(tmp_path: Path) -
             tmp_path, "check-counts.sh", prints="Traceback (most recent call last):", exit_code=1
         ),
     )
-    assert result.returncode == 0, result.stderr
-    exported = _exported(tmp_path)
-    assert exported["COUNTS"] == "", exported
-    assert exported["COUNTS_ACKED"] == "", exported
-    assert exported["SEAMS"] == "0", "a real zero must still be recorded as zero"
+    assert result.returncode != 0, "a check that printed no number must stop the row"
+    assert "no COUNTS count" in result.stdout, result.stdout
+    assert _exported(tmp_path) == {}, "nothing reaches GITHUB_ENV from a half sweep"

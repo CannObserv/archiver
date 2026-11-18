@@ -32,7 +32,8 @@ everywhere, plus the installed GC timer and apt pins on the host:
 - **A prune stage's soak ending stays green**: its review-by date is the
   probe's prompt for the next stage, not a deadline for every change's CI.
   Every other expired exception is red.
-- **No ``image-owner``, and no private ``caller``**: this repo is public
+- **No ``caller``, and no ``image-owner``**: no cohort repo calls this host's
+  API (#513), and this repo is public, so a private one gets no line
   (gregoryfoster/skills#350).
 """
 
@@ -174,9 +175,7 @@ def _assert_clean(knob: dict) -> None:
     """Clean but for a prune stage's soak ending, which the probe reports."""
     soaking = {e["line"] for e in knob["exception"] if e["what"].startswith(PRUNE_STAGES)}
     assert [
-        f
-        for f in knob["findings"]
-        if not (f["kind"] == "expired-exception" and f["line"] in soaking)
+        f for f in knob["findings"] if not (f["kind"] == "soak-ended" and f["line"] in soaking)
     ] == []
     assert knob["report_only"] is False, knob["report_only_reasons"]
     assert knob["class"]["value"] == "production"
@@ -377,12 +376,13 @@ def test_tailscale_restarts_in_its_own_step() -> None:
     assert ["tailscale", "tailscale-archive-keyring", "tailscale"] in _named("hold")
 
 
-def test_the_one_caller_is_public_and_no_private_name_is_published() -> None:
-    assert _named("caller") == [["CannObserv/replicator"]]
+def test_no_caller_is_declared_and_no_repo_is_named() -> None:
+    """No cohort repo calls this host's API (#513): Replicator and Watcher
+    reach it over the bus only, and a private caller gets no line (knob.md).
+    The knob is public, so a repo named in a comment is published too."""
+    assert _named("caller") == []
     assert _named("image-owner") == []
-    # Nor in a comment: the knob is public, so a name there is published too.
-    named = set(re.findall(r"CannObserv/[\w.-]+", KNOB.read_text()))
-    assert named == {"CannObserv/replicator"}, named
+    assert re.findall(r"CannObserv/[\w.-]+", KNOB.read_text()) == []
 
 
 @pytest.mark.parametrize("name", sorted(name for name, _ in FOLLOWED.values()))
