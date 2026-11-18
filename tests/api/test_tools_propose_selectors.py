@@ -1,5 +1,6 @@
 """Tests for POST /api/v1/tools/propose-selectors."""
 
+import httpx
 import pytest
 from co_core.effects.fetch import FetchResult
 
@@ -9,13 +10,21 @@ from src.api.main import app
 HEADERS = {"X-API-Key": "test-secret-key"}
 
 
-def _stub_fetcher(content: bytes):
+def _stub_fetcher(
+    content: bytes,
+    *,
+    status_code: int = 200,
+    headers: dict[str, str] | None = None,
+    raise_exc: Exception | None = None,
+):
     class _Stub:
         async def execute(self, effect):
+            if raise_exc is not None:
+                raise raise_exc
             return FetchResult(
                 content=content,
-                status_code=200,
-                headers={"content-type": "text/html"},
+                status_code=status_code,
+                headers={"content-type": "text/html"} | (headers or {}),
                 duration_ms=5,
                 fetcher_used="http",
             )
@@ -121,3 +130,40 @@ async def test_propose_selectors_requires_api_key(client):
         json={"url": "https://example.com", "description": "anything"},
     )
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_propose_selectors_unreachable_target_returns_422_target_unreachable(client):
+    """A transport error was an unhandled 500 (#473); it is preview's 422 now."""
+    app.dependency_overrides[get_fetch_driver] = lambda: _stub_fetcher(
+        b"", raise_exc=httpx.ConnectError("nope")
+    )
+    response = await client.post(
+        "/api/v1/tools/propose-selectors",
+        headers=HEADERS,
+        json={"url": "https://example.com", "description": "anything"},
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert detail["errors"][0]["code"] == "target_unreachable"
+    assert detail["errors"][0]["path"] == "/url"
+
+
+@pytest.mark.asyncio
+async def test_propose_selectors_non_2xx_returns_422_target_http_error(client):
+    """Selectors proposed from a challenge page are noise (#473): refused like preview."""
+    app.dependency_overrides[get_fetch_driver] = lambda: _stub_fetcher(
+        b"<p>Just a moment...</p>", status_code=403, headers={"cf-mitigated": "challenge"}
+    )
+    response = await client.post(
+        "/api/v1/tools/propose-selectors",
+        headers=HEADERS,
+        json={"url": "https://example.com", "description": "Just a moment"},
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    message = "target answered HTTP 403 Forbidden (Cloudflare bot challenge)"
+    assert detail["errors"] == [{"path": "/url", "message": message, "code": "target_http_error"}]
+    assert detail["data"] == {"status_code": 403, "challenge": True}

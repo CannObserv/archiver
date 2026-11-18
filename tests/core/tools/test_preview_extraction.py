@@ -10,6 +10,8 @@ from co_core.pure.extract.base import ExtractionResult
 from co_core.pure.extract.html import HtmlExtractor
 from co_core.pure.extract.pdf import PdfExtractor
 
+from src.core.tools import preview_extraction as preview_module
+from src.core.tools.fetch_errors import TargetHttpError
 from src.core.tools.preview_extraction import (
     ExtractionFailedError,
     PreviewExtractionResult,
@@ -56,9 +58,13 @@ def _stub_fetcher(
     *,
     raise_exc: Exception | None = None,
     content_type: str | None = "text/html",
+    status_code: int = 200,
+    extra_headers: dict[str, str] | None = None,
+    final_url: str | None = None,
 ):
     """Return a minimal fetch-driver stub."""
     headers = {"Content-Type": content_type} if content_type is not None else {}
+    headers |= extra_headers or {}
 
     class _Stub:
         async def execute(self, effect) -> FetchResult:
@@ -66,10 +72,11 @@ def _stub_fetcher(
                 raise raise_exc
             return FetchResult(
                 content=content,
-                status_code=200,
+                status_code=status_code,
                 headers=headers,
                 duration_ms=5,
                 fetcher_used="http",
+                final_url=final_url,
             )
 
     return _Stub()
@@ -175,6 +182,105 @@ class TestPreviewExtractionFetchFailure:
                 DEFAULT_URL,
                 VALID_FULL_PAGE_SPEC,
             )
+
+
+CHALLENGE_PAGE = (
+    b"<html><head><title>Just a moment...</title></head>"
+    b"<body><div class='target'>Enable JavaScript and cookies to continue</div></body></html>"
+)
+
+
+class TestPreviewExtractionRefusesNon2xx:
+    """A captured non-2xx is refused before extraction (#473): the driver captures, never raises."""
+
+    @pytest.fixture
+    def extract_calls(self, monkeypatch) -> list[str]:
+        """Spy on the extraction leg: a refused fetch must never reach it."""
+        calls: list[str] = []
+        original = preview_module._extract
+
+        def _spy(content, headers, url, source_spec):
+            calls.append(url)
+            return original(content, headers, url, source_spec)
+
+        monkeypatch.setattr(preview_module, "_extract", _spy)
+        return calls
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("status_code", "extra_headers", "challenge"),
+        [
+            (403, {"cf-mitigated": "challenge"}, True),
+            (403, {"CF-Mitigated": "challenge"}, True),
+            (403, {}, False),
+            (404, {}, False),
+            (503, {}, False),
+            # is_success passes a body-less 3xx; is_2xx refuses it (co-core #259).
+            (304, {}, False),
+        ],
+        ids=["403-challenge", "403-challenge-header-case", "403", "404", "503", "304"],
+    )
+    @pytest.mark.parametrize(
+        "spec", [VALID_CSS_SPEC, VALID_FULL_PAGE_SPEC], ids=["css", "full_page"]
+    )
+    async def test_non_2xx_raises_target_http_error_and_never_extracts(
+        self, extract_calls, status_code, extra_headers, challenge, spec
+    ):
+        with pytest.raises(TargetHttpError) as exc_info:
+            await preview_extraction(
+                _stub_fetcher(CHALLENGE_PAGE, status_code=status_code, extra_headers=extra_headers),
+                DEFAULT_URL,
+                spec,
+            )
+        assert exc_info.value.status_code == status_code
+        assert exc_info.value.challenge is challenge
+        assert extract_calls == []
+
+    @pytest.mark.asyncio
+    async def test_message_names_the_status_and_the_challenge(self):
+        with pytest.raises(TargetHttpError) as exc_info:
+            await preview_extraction(
+                _stub_fetcher(
+                    CHALLENGE_PAGE, status_code=403, extra_headers={"cf-mitigated": "challenge"}
+                ),
+                DEFAULT_URL,
+                VALID_FULL_PAGE_SPEC,
+            )
+        assert (
+            str(exc_info.value) == "target answered HTTP 403 Forbidden (Cloudflare bot challenge)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_message_without_a_challenge_has_no_hint(self):
+        with pytest.raises(TargetHttpError) as exc_info:
+            await preview_extraction(
+                _stub_fetcher(status_code=404), DEFAULT_URL, VALID_FULL_PAGE_SPEC
+            )
+        assert str(exc_info.value) == "target answered HTTP 404 Not Found"
+
+    @pytest.mark.asyncio
+    async def test_unknown_status_has_no_reason_phrase(self):
+        with pytest.raises(TargetHttpError) as exc_info:
+            await preview_extraction(
+                _stub_fetcher(status_code=599), DEFAULT_URL, VALID_FULL_PAGE_SPEC
+            )
+        assert str(exc_info.value) == "target answered HTTP 599"
+
+    @pytest.mark.asyncio
+    async def test_a_followed_redirect_landing_on_200_is_previewed(self, extract_calls):
+        """The driver follows redirects; a 200 reached through one is the target's body."""
+        result = await preview_extraction(
+            _stub_fetcher(status_code=200, final_url="https://www.example.com/moved"),
+            DEFAULT_URL,
+            VALID_CSS_SPEC,
+        )
+        assert [c.text for c in result.chunks] == ["kept content"]
+        assert extract_calls == [DEFAULT_URL]
+
+    @pytest.mark.asyncio
+    async def test_spec_validation_still_runs_before_the_fetch(self):
+        with pytest.raises(SourceSpecValidationError):
+            await preview_extraction(_stub_fetcher(status_code=403), DEFAULT_URL, {})
 
 
 class TestPreviewExtractionUrlFromSpec:
