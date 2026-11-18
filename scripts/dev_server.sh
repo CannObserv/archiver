@@ -71,9 +71,9 @@ unset GH_TOKEN
 # them, so a raw '@' in a password is masked whole. An '@' after the authority
 # means a raw '/', '?' or '#' inside a password ended it early. Nothing printed
 # from that is safe, so the whole value is withheld, as it is for anything that
-# is not scheme://….
+# is not scheme://…. LC_ALL=C: a bracket range is locale-dependent otherwise.
 mask_url() {
-  local url="$1" scheme rest authority tail path userinfo
+  local LC_ALL=C url="$1" scheme rest authority tail path userinfo
   [[ -z "$url" ]] && return 0
   local withheld="(value withheld: not a well-formed URL)"
   case "$url" in
