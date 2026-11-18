@@ -479,6 +479,25 @@ p:last-child { margin-bottom: 0; }
   border-color: var(--color-brand-dark);
 }
 
+/* A selector suggestion chip (register step 2, #484). `.btn` is nowrap, so a long
+   xpath set its chip's min-content width and the strip widened the page. The label
+   wraps instead - `anywhere`, because only that value lowers the min-content size -
+   and the frequency count stays on one line beside it. `.btn` itself is unchanged. */
+.selector-chip {
+  max-width: 100%;
+  justify-content: space-between;
+  text-align: left;
+}
+.selector-chip__label {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.selector-chip__count {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ─── Badges ─────────────────────────────────────────────────────────────── */
 .badge {
   display: inline-flex;
@@ -1353,6 +1372,12 @@ a.badge:hover { text-decoration: underline; }
 .text-xs    { font-size: var(--font-size-xs); }
 .text-mono  { font-family: var(--font-mono); }
 .truncate   { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A single column of blocks with the standard gap (#484: register step 2). */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
 .sr-only {
   position: absolute;
   width: 1px; height: 1px;

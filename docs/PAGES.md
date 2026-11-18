@@ -91,6 +91,13 @@ the reuse choice ([REGISTER.md](REGISTER.md)).
 suggestions from the URL's domain, grouped by algorithm, selector and
 `ignore_selectors` (#378), so a chip never carries another spec's exclusions.
 
+Step 2 is one column (`.stack`, #484): help text, errors, the suggestions (sort
+buttons and chips), then the spec editor, **Preview extraction →** and its result,
+then Back/Next. A chip writes into the editor just below it. It was two columns
+until #484: a grid track grows to its longest chip, so a ~150-character xpath
+pushed the editor off the page. A long chip now wraps inside itself
+(`.selector-chip`) and keeps its `×N` count whole.
+
 **POST `/dashboard/register/preview`** - HTMX partial: attempts a preview
 extraction for `url` + `source_specs`, through the extractor Processor would
 dispatch for the response's media type (#317). A spec that extractor refuses

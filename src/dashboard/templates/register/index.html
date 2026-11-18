@@ -97,7 +97,9 @@
       <p class="text-danger text-sm" style="margin-bottom:var(--space-2);">{{ errors.source_specs }}</p>
       {% endif %}
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);margin-bottom:var(--space-3);">
+      {# Stacked, not side by side (#484): a grid track grows to its longest chip, which
+         pushed the editor off the page. A chip writes into the editor just below it. #}
+      <div class="stack" style="margin-bottom:var(--space-3);">
         {# Suggestions panel #}
         <div>
           <p class="text-sm text-muted" style="margin-bottom:var(--space-1);">Suggestions from this domain:</p>

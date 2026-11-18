@@ -11,8 +11,10 @@
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:var(--space-1);">
     <template x-for="chip in chips" :key="chip.label">
-      <button type="button" class="btn btn--secondary btn--sm" @click="insertChip(chip.label, chip.value)">
-        <span x-text="chip.label"></span>&nbsp;<span class="text-muted" x-text="'×' + chip.frequency"></span>
+      {# The label wraps inside the chip and the count never does (#484): a ~150-char
+         xpath must not set the page's width. #}
+      <button type="button" class="btn btn--secondary btn--sm selector-chip" @click="insertChip(chip.label, chip.value)">
+        <span class="selector-chip__label" x-text="chip.label"></span><span class="text-muted selector-chip__count" x-text="'×' + chip.frequency"></span>
       </button>
     </template>
   </div>

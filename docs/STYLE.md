@@ -69,6 +69,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.topbar` - fixed top bar; contains `.topbar__brand` and `.topbar__actions`.
 - `.sidebar` - fixed left sidebar; contains `.sidebar__nav`, `.sidebar__link`, `.sidebar__section-label`.
 - `.main-content` - right content area with `margin-left: var(--sidebar-width)`.
+- `.stack` - one column of blocks with a `--space-3` gap (flex column). Use it rather than a two-column grid when either block can hold an unbreakable run: a `1fr` track never shrinks below its min-content width (#484, register step 2).
 
 ### Buttons
 - `.btn` - base; always pair with a modifier.
@@ -78,6 +79,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.btn--ghost` - transparent, borderless, no hover chrome beyond a faint fill. Reserved for the brand-colored **topbar** (Sign out, theme toggle), where `.topbar .btn--ghost` renders `--color-text-on-brand` (white). On page surfaces it defaults to `--color-text` but reads as plain text - prefer `.btn--secondary` for actions that should look clickable.
 - `.btn--active` - brand-subtle background with brand text; use for the currently-selected state of a toggle button group (e.g. sort mode buttons in `sortableChips`).
 - `.btn--sm` - compact size.
+- `.selector-chip`, `.selector-chip__label`, `.selector-chip__count` - a selector suggestion chip (register step 2, #484). `.btn` is `white-space: nowrap`, so a long xpath made its chip as wide as itself and the strip widened the page. The chip caps at `max-width: 100%`; the label wraps (`overflow-wrap: anywhere`, which alone lowers the min-content size, with `min-width: 0`); the `×N` count stays whole (`nowrap`, `flex-shrink: 0`). `.btn` itself is unchanged. `tests/dashboard/test_template_style_rules.py` pins all of it.
 - Minimum touch target: 44 × 44 px (enforced by `min-height: 44px`).
 
 ### Badges & Status
