@@ -69,7 +69,6 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.topbar` - fixed top bar; contains `.topbar__brand` and `.topbar__actions`.
 - `.sidebar` - fixed left sidebar; contains `.sidebar__nav`, `.sidebar__link`, `.sidebar__section-label`.
 - `.main-content` - right content area with `margin-left: var(--sidebar-width)`.
-- `.stack` - one column of blocks with a `--space-3` gap (flex column). Use it rather than a two-column grid when either block can hold an unbreakable run: a `1fr` track never shrinks below its min-content width (#484, register step 2).
 
 ### Buttons
 - `.btn` - base; always pair with a modifier.
@@ -151,6 +150,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.text-danger` - `color: var(--color-danger)`. Use on inline error messages and destructive-action labels.
 - `.text-success` - `color: var(--color-success)`. Use on inline confirmation/status messages.
 - `.skip-link` - top-of-page accessibility link.
+- `.stack` - one column of blocks with a `--space-3` gap (flex column). Use it rather than a two-column grid when either block can hold an unbreakable run: a `1fr` track never shrinks below its min-content width (#484, register step 2).
 
 ### Alpine.js integration
 - `[x-cloak] { display: none !important; }` - prevents FOUC on elements controlled by `x-show`. Add `x-cloak` to any element that should be hidden before Alpine initialises (e.g. collapsible panels). Do **not** add `x-cloak` to elements that should start visible.
