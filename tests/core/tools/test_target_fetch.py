@@ -76,3 +76,11 @@ def test_status_line_and_message(status_code, challenge, status_line):
     err = TargetHttpError(status_code, challenge=challenge)
     assert err.status_line == status_line
     assert str(err) == f"target answered {status_line}"
+
+
+@pytest.mark.asyncio
+async def test_a_transport_error_with_no_text_still_says_what_failed():
+    """CR 6: a real httpx.ReadTimeout stringifies to ''; the 422 and the card must not be blank."""
+    with pytest.raises(TargetUnreachableError) as exc_info:
+        await fetch_2xx(_driver(exc=httpx.ReadTimeout("")), "https://example.com")
+    assert str(exc_info.value) == "ReadTimeout"

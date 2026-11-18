@@ -76,7 +76,8 @@ async def fetch_2xx(driver: AsyncFetchDriver, url: str) -> FetchResult:
     try:
         result = await driver.execute(FetchContent(url))
     except httpx.HTTPError as e:
-        raise TargetUnreachableError(str(e)) from e
+        # A timeout's text is often empty (httpx.ReadTimeout('')): name its class then.
+        raise TargetUnreachableError(str(e) or type(e).__name__) from e
     if not result.is_2xx:
         raise TargetHttpError(result.status_code, challenge=_is_challenge(result.headers))
     return result
