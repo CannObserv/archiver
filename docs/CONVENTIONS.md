@@ -38,13 +38,16 @@ keeps whatever is written to it for the whole retention window, readable by
 anyone who can run `journalctl` on the host. Two layers, in this order:
 
 1. **Redact at the call site.** A site that knows its field is a URL calls
-   `bus_client.redact_url(...)` and logs the result. This is the fix; it keeps
-   the line honest about *which* broker or database it names.
+   `bus_client.redact_url(...)` (a broker) or `database.loggable_url(...)` (the
+   engine's `host:port/database`) and logs the result. This is the fix; it keeps
+   the line honest about *which* broker or database it names. Both show any
+   query as `?***`: libpq, asyncpg and redis-py all take `?password=` (#448).
 2. **`CredentialRedactingFilter` is the net**, wired on the JSON handler in
    both `configure_logging()` and `src/core/log_config.json` - on the handler,
    not on named loggers, because the site that leaks next is by definition not
-   one we listed. It scrubs `scheme://user:password@` out of a record's
-   message, args and extras, and never drops a record.
+   one we listed. It scrubs `scheme://user:password@` and a `password=` query
+   parameter out of a record's message, args and extras, and never drops a
+   record.
 
 The filter is not permission to skip step 1: it runs per record on every line,
 and a call site that hands it a secret in a shape it does not recognise (a JSON
