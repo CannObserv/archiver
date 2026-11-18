@@ -91,23 +91,14 @@ the reuse choice ([REGISTER.md](REGISTER.md)).
 suggestions from the URL's domain, grouped by algorithm, selector and
 `ignore_selectors` (#378), so a chip never carries another spec's exclusions.
 
-Step 2 is one column (`.stack`, #484): help text, errors, the suggestions (sort
-buttons and chips), then the spec editor, **Preview extraction →** and its result,
-then Back/Next. A chip writes into the editor just below it. It was two columns
-until #484: a grid track grows to its longest chip, so a ~150-character xpath
-pushed the editor off the page. A long chip now wraps inside itself
-(`.selector-chip`) and keeps its `×N` count whole.
+Step 2 is one column (`.stack`, #484): chips (`.selector-chip`, wrapping), then
+the editor, preview, Back/Next.
 
 **POST `/dashboard/register/preview`** - HTMX partial: attempts a preview
 extraction for `url` + `source_specs`, through the extractor Processor would
 dispatch for the response's media type (#317). A spec that extractor refuses
 (`css` on XML, `jsonpath` on HTML, an invalid `xpath`) renders as an error, one `path: message` line per validation error.
-A target that answers a non-2xx is refused before extraction (#473): one error line naming the
-status, e.g. "The target answered HTTP 403 Forbidden (Cloudflare bot challenge): nothing to
-extract. The selector was not tested." ("The spec" when there is no selector), and no
-"Retrieval successful." A `cf-mitigated: challenge` response adds one muted line: archiver
-doesn't get past bot challenges, so ask the site's owner for an allowlist or use another
-source. A
+A non-2xx target renders one line naming its status, never "Retrieval successful." (#473). A
 selector that matches nothing (zero chunks) renders "The selector matched nothing", not an empty
 success (#356); `full_page` with no text keeps "No content extracted". Step 2's
 help text names those limits: CSS for HTML pages, XPath for HTML pages, XML and
