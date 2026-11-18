@@ -39,8 +39,8 @@ def loggable_url(url: URL) -> str:
     Rebuilt from the URL SQLAlchemy parsed, the one it connects with, rather
     than sliced from the string: ``url.split("@")[-1]`` kept the query, and
     libpq and asyncpg both take ``?password=``. A query shows only as ``?***``.
-    ``CredentialRedactingFilter`` cannot catch that one: it matches
-    ``scheme://user:password@``, and this line has neither.
+    This is the call-site fix; ``CredentialRedactingFilter`` is the net under it
+    (docs/CONVENTIONS.md § Logging).
     """
     host = url.host or ""
     if ":" in host:  # IPv6 literal: SQLAlchemy strips the brackets
