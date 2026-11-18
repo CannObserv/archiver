@@ -186,7 +186,9 @@ async def propose_selectors(
     """Return ranked selector candidates for ``description`` on ``url``.
 
     Empty match set returns ``[]``. Always pair with ``preview_extraction``
-    against the chosen candidate before persisting a SourceSpec.
+    against the chosen candidate before persisting a SourceSpec. A 422 (target
+    unreachability, or a target that answered a non-2xx such as a 403 bot
+    challenge) is surfaced as an ``ArchiverClientError`` subclass.
     """
     body = await _post_json(
         client_facade,
@@ -235,8 +237,9 @@ async def preview_extraction(
     (schema_version, extraction, fingerprint — no target section). The body is
     extracted as Processor would for its media type (an RSS/Atom feed gives one
     chunk per item). A 422 (schema validation failure, a spec the dispatched
-    extractor refuses, target unreachability, or an unparseable body) is surfaced
-    as an ``ArchiverClientError`` subclass.
+    extractor refuses, target unreachability, a target that answered a non-2xx
+    such as a 403 bot challenge, or an unparseable body) is surfaced as an
+    ``ArchiverClientError`` subclass.
     """
     body = await _post_json(
         client_facade,
