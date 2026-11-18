@@ -6,6 +6,7 @@ DATABASE_URL for prototype convenience (single-instance Postgres on this VM).
 
 import os
 
+from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -13,7 +14,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from src.core.logging import get_logger
+from src.core.logging import REDACTED, get_logger
 
 logger = get_logger(__name__)
 
@@ -32,6 +33,24 @@ def get_database_url() -> str:
     return url
 
 
+def loggable_url(url: URL) -> str:
+    """Where *url* points, for a log line: ``host:port/database``, no credentials (#448).
+
+    Rebuilt from the URL SQLAlchemy parsed, the one it connects with, rather
+    than sliced from the string: ``url.split("@")[-1]`` kept the query, and
+    libpq and asyncpg both take ``?password=``. A query shows only as ``?***``.
+    ``CredentialRedactingFilter`` cannot catch that one: it matches
+    ``scheme://user:password@``, and this line has neither.
+    """
+    host = url.host or ""
+    if ":" in host:  # IPv6 literal: SQLAlchemy strips the brackets
+        host = f"[{host}]"
+    if url.port is not None:
+        host = f"{host}:{url.port}"
+    shown = f"{host}/{url.database or ''}"
+    return f"{shown}?{REDACTED}" if url.query else shown
+
+
 def get_engine() -> AsyncEngine:
     """The process's one engine: request sessions, consumers, the outbox, the timers.
 
@@ -45,7 +64,7 @@ def get_engine() -> AsyncEngine:
     if _engine is None:
         url = get_database_url()
         _engine = create_async_engine(url, echo=False, pool_pre_ping=True)
-        logger.info("archiver db engine created", extra={"url": url.split("@")[-1]})
+        logger.info("archiver db engine created", extra={"url": loggable_url(_engine.url)})
     return _engine
 
 
