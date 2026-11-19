@@ -160,20 +160,24 @@ def redact_url(redis_url: str) -> str:
     which is harmless for DNS but means the line is not byte-identical to what
     the operator configured. Both matter because ``redis_url`` is the one field
     identifying *which* broker is down, and it is emitted at ERROR mid-incident.
+
+    A query or fragment shows only as ``?***`` (archiver#448): redis-py hands
+    query keys to the connection, so ``?password=`` is a credential too.
     """
     try:
         parts = urlsplit(redis_url)
+        tail = f"?{REDACTED}" if parts.query or parts.fragment else ""
         if parts.password is None:
-            return redis_url
+            if not tail:
+                return redis_url
+            return urlunsplit((parts.scheme, parts.netloc, parts.path, "", "")) + tail
         host = parts.hostname or ""
         if ":" in host:  # IPv6 literal - urlsplit strips the brackets
             host = f"[{host}]"
         if parts.port:
             host = f"{host}:{parts.port}"
         userinfo = f"{parts.username or ''}:{REDACTED}"
-        return urlunsplit(
-            (parts.scheme, f"{userinfo}@{host}", parts.path, parts.query, parts.fragment)
-        )
+        return urlunsplit((parts.scheme, f"{userinfo}@{host}", parts.path, "", "")) + tail
     except ValueError:
         return "<unparseable redis url>"
 

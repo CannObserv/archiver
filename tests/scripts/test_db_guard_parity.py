@@ -183,7 +183,11 @@ def _bash_notifier_accepts(url: str) -> bool:
         text=True,
         capture_output=True,
     )
-    mapped = f"NOTIFIER={url} (dev key)" in result.stdout.splitlines()
+    # Mapped, not the URL verbatim: the report masks a query (archiver#448).
+    mapped = any(
+        line.startswith("NOTIFIER=") and line.endswith(" (dev key)")
+        for line in result.stdout.splitlines()
+    )
     assert mapped is (result.returncode == 0), (result.stdout, result.stderr)
     return mapped
 

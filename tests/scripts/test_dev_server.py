@@ -26,6 +26,9 @@ SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "dev_server.sh"
 PROD_URL = "postgresql+asyncpg://archiver:archiver@localhost:5432/archiver"
 TEST_URL = "postgresql+asyncpg://archiver:archiver@localhost:5432/archiver_test"
 DEV_URL = "postgresql+asyncpg://archiver:archiver@localhost:5432/archiver_dev"
+# What the report prints: the password masked (archiver#448).
+TEST_SHOWN = "postgresql+asyncpg://archiver:***@localhost:5432/archiver_test"
+DEV_SHOWN = "postgresql+asyncpg://archiver:***@localhost:5432/archiver_dev"
 
 
 def run(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -51,7 +54,7 @@ def test_resolves_to_test_database_by_default() -> None:
     """With only TEST_DATABASE_URL set, the dev server targets the test DB."""
     result = run({"TEST_DATABASE_URL": TEST_URL, "ARCHIVER_DATABASE_URL": PROD_URL})
     assert result.returncode == 0, result.stderr
-    assert f"ARCHIVER_DATABASE_URL={TEST_URL}" in result.stdout
+    assert f"ARCHIVER_DATABASE_URL={TEST_SHOWN}" in result.stdout
 
 
 def test_dedicated_dev_url_wins_over_test_url() -> None:
@@ -68,7 +71,7 @@ def test_dedicated_dev_url_wins_over_test_url() -> None:
         }
     )
     assert result.returncode == 0, result.stderr
-    assert f"ARCHIVER_DATABASE_URL={DEV_URL}" in result.stdout
+    assert f"ARCHIVER_DATABASE_URL={DEV_SHOWN}" in result.stdout
 
 
 @pytest.mark.parametrize("prod_var", ["ARCHIVER_DATABASE_URL", "DATABASE_URL"])
@@ -155,7 +158,8 @@ def test_accepts_test_and_dev_suffixed_names(suffix: str) -> None:
     url = f"postgresql+asyncpg://archiver:archiver@localhost:5432/archiver{suffix}"
     result = run({"TEST_DATABASE_URL": url, "ARCHIVER_DATABASE_URL": PROD_URL})
     assert result.returncode == 0, result.stderr
-    assert f"ARCHIVER_DATABASE_URL={url}" in result.stdout
+    shown = f"postgresql+asyncpg://archiver:***@localhost:5432/archiver{suffix}"
+    assert f"ARCHIVER_DATABASE_URL={shown}" in result.stdout
 
 
 def test_reads_the_repo_env_file_when_not_skipped(tmp_path: Path) -> None:
@@ -184,7 +188,7 @@ def test_reads_the_repo_env_file_when_not_skipped(tmp_path: Path) -> None:
         capture_output=True,
     )
     assert result.returncode == 0, result.stderr
-    assert f"ARCHIVER_DATABASE_URL={TEST_URL}" in result.stdout
+    assert f"ARCHIVER_DATABASE_URL={TEST_SHOWN}" in result.stdout
 
 
 def test_reports_planned_migration_of_the_dev_database() -> None:
@@ -198,7 +202,7 @@ def test_reports_planned_migration_of_the_dev_database() -> None:
     """
     result = run({"TEST_DATABASE_URL": TEST_URL})
     assert result.returncode == 0, result.stderr
-    assert f"MIGRATE={TEST_URL}" in result.stdout
+    assert f"MIGRATE={TEST_SHOWN}" in result.stdout
 
 
 def test_migration_can_be_skipped() -> None:

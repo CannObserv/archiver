@@ -1,9 +1,53 @@
-"""The app engine: ``get_database_url``'s refusal (#452 D5) and the pre-ping (#510)."""
+"""The app engine: ``get_database_url``'s refusal (#452 D5), the pre-ping (#510),
+and the start line that names the database without its credentials (#448)."""
+
+import logging
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 
-from src.core.database import get_database_url, get_engine, reset_engine
+from src.core.database import get_database_url, get_engine, loggable_url, reset_engine
+
+SENTINEL = "Zq7sent%40Kx9col%3AWm4pct%25Vb2end"
+
+
+@pytest.mark.parametrize(
+    ("url", "shown"),
+    [
+        ("postgresql+asyncpg://u:p@localhost:5432/archiver_test", "localhost:5432/archiver_test"),
+        (f"postgresql+asyncpg://u:{SENTINEL}@db.internal/archiver", "db.internal/archiver"),
+        # libpq and asyncpg both take ?password=: no query value is logged.
+        (
+            f"postgresql+asyncpg://u@localhost:5432/archiver_test?password={SENTINEL}",
+            "localhost:5432/archiver_test?***",
+        ),
+        ("postgresql+asyncpg://u:p@[::1]:5432/archiver_test", "[::1]:5432/archiver_test"),
+        # A socket URL names its host in the query; the database still shows.
+        ("postgresql+asyncpg://u:p@/archiver?host=/var/run/postgresql", "/archiver?***"),
+    ],
+)
+def test_loggable_url_names_the_target_and_never_a_credential(url: str, shown: str) -> None:
+    assert loggable_url(make_url(url)) == shown
+
+
+def test_the_engine_start_line_carries_no_query_password(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``url.split("@")[-1]`` kept the query, ``?password=`` included (#448 CR 1)."""
+    monkeypatch.setenv(
+        "ARCHIVER_DATABASE_URL",
+        f"postgresql+asyncpg://u@localhost:5432/archiver_test?password={SENTINEL}",
+    )
+    reset_engine()
+    try:
+        with caplog.at_level(logging.INFO, logger="src.core.database"):
+            get_engine()
+    finally:
+        reset_engine()
+    (record,) = [r for r in caplog.records if r.getMessage() == "archiver db engine created"]
+    assert record.url == "localhost:5432/archiver_test?***"
+    assert "Zq7sent" not in caplog.text
 
 
 def test_a_missing_url_points_at_the_env_files_section(monkeypatch: pytest.MonkeyPatch) -> None:

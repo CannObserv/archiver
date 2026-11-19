@@ -68,11 +68,22 @@ secret to hide - is left alone.
 """
 
 
+_PASSWORD_PARAM = re.compile(r"(?i)(?P<key>[?&]password=)[^&#\s]+")
+"""A ``password=`` query parameter (archiver#448).
+
+libpq, asyncpg and redis-py all take one, and a DSN sliced past its '@' (or
+never credentialed) has no userinfo for the rule above to find. Only after
+``?`` or ``&``, so prose that says ``password=`` is left alone.
+"""
+
+
 def _scrub(value: str) -> str:
     """Replace every embedded password in ``value``; cheap on the common path."""
-    if "://" not in value:
-        return value
-    return _CREDENTIAL_URL.sub(rf"\g<scheme>\g<user>:{REDACTED}@", value)
+    if "://" in value:
+        value = _CREDENTIAL_URL.sub(rf"\g<scheme>\g<user>:{REDACTED}@", value)
+    if "password=" in value.lower():
+        value = _PASSWORD_PARAM.sub(rf"\g<key>{REDACTED}", value)
+    return value
 
 
 class CredentialRedactingFilter(logging.Filter):
