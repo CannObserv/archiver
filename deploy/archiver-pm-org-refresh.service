@@ -41,14 +41,15 @@ TimeoutStartSec=900
 # The release's interpreter, not `uv run`: uv wants $HOME (archiver#339).
 ExecStart=/srv/archiver/live/.venv/bin/python -m src.core.tools.refresh_orgs
 
-# The check-in to co-archiver-pm-org-refresh (archiver#476). The monitor id
-# (CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID) lands here once Status provisions it;
-# until then each run warns that it sent nothing and exits 0. The key is the
+# The check-in to co-archiver-pm-org-refresh (archiver#476, CannObserv/status#134).
+# Without the monitor id each run warns that it sent nothing and exits 0. The key is the
 # tenant's, drift's, root 600 on disk, handed over at start, never through the
 # env file above. SetCredential= is the fallback when the file is missing: the
 # sweep still runs, logs that it has no key, and exits 0.
 LoadCredential=status-checkin-key:/etc/archiver/status-checkin.key
 SetCredential=status-checkin-key:\n
+Environment=CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID=01M7ZWG4RRFFNW6GVP63CPT3DJ
+
 
 # As archiver.service: nothing writes outside PrivateTmp, nothing reads /home.
 NoNewPrivileges=yes
