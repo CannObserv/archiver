@@ -172,7 +172,7 @@ provisioning). The rules are in `src/core/tools/refresh_orgs.py` (`Sweep`, `verd
 | Kind | When | Status sees |
 |---|---|---|
 | `ok` | every linked org answered: 200, 304, merged, gone, or a 200 with no canonical name (`unnamed`, an ERROR line, a data problem). **None linked is `ok` too**, so a quiet host never goes `missing` | `ok` |
-| `unreachable` | **any** linked org got no answer: timeout, transport error, 5xx, 429, a rejected key. Orgs a stopped sweep never reached (three failures in a row, or a `Retry-After` over 60 s) count as unanswered | `alert` on the **first** such run (D1, no N-in-a-row) |
+| `unreachable` | **any** linked org got no answer: timeout, transport error, 5xx, 429, a rejected key. Orgs a stopped sweep never reached (three failures in a row, or a `Retry-After` over 60 s) count as unanswered, and so does a merged org whose winner then got no answer: its snapshot was not refreshed | `alert` on the **first** such run (D1, no N-in-a-row) |
 | `test` | `--test-alert`, by hand; asks Power Map and the database nothing | `alert` |
 | silent | dormant (`ARCHIVER_POWER_MAP_API_KEY` unset), a crash (a failed unit), a sweep killed at `TimeoutStartSec=900`, Status unreachable | **nothing**; past the grace, `missing` |
 
