@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from src.core.status_checkin import CREDENTIAL_NAME, MONITOR_ID_PATTERN
+from src.core.tools.refresh_orgs import MONITOR_ID_ENV
 from tests.deploy.live_release import drift_message, installed_and_expected
 
 _DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
@@ -49,6 +51,35 @@ def test_service_bounds_its_own_runtime() -> None:
     well inside the hourly cadence so two sweeps never overlap."""
     (value,) = _directives(REPO_SERVICE, "TimeoutStartSec")
     assert 0 < int(value.rstrip("s")) < 3600
+
+
+def test_service_gets_the_status_key_as_a_credential_with_an_empty_fallback() -> None:
+    """archiver#476: the tenant's key, drift's, never through ``/etc/archiver/.env``.
+    With the file missing the sweep still runs and logs that it sent nothing."""
+    assert _directives(REPO_SERVICE, "LoadCredential") == [
+        f"{CREDENTIAL_NAME}:/etc/archiver/status-checkin.key"
+    ]
+    assert _directives(REPO_SERVICE, "SetCredential") == [f"{CREDENTIAL_NAME}:\\n"]
+
+
+def test_service_waits_for_the_tailnet() -> None:
+    """The check-in goes to ``status:9000`` over the tailnet (archiver#476)."""
+    after = " ".join(_directives(REPO_SERVICE, "After")).split()
+    wants = " ".join(_directives(REPO_SERVICE, "Wants")).split()
+    assert {"network-online.target", "tailscaled.service", "postgresql.service"} <= set(after)
+    assert {"network-online.target", "tailscaled.service"} <= set(wants)
+
+
+def test_service_monitor_id_when_named_is_a_ulid() -> None:
+    """Shipped without the id until Status provisions ``co-archiver-pm-org-refresh``
+    (the run then warns and exits 0); once named, a ULID or the run sends nothing."""
+    ids = [
+        v.split("=", 1)[1]
+        for v in _directives(REPO_SERVICE, "Environment")
+        if v.startswith(f"{MONITOR_ID_ENV}=")
+    ]
+    assert len(ids) <= 1
+    assert all(MONITOR_ID_PATTERN.fullmatch(i) for i in ids)
 
 
 def test_timer_ticks_hourly() -> None:

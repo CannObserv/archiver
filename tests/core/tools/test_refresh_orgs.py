@@ -8,12 +8,16 @@ missing and keeps rendering. No answer changes nothing.
 """
 
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
+import respx
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from ulid import ULID
 
@@ -29,17 +33,21 @@ from src.core.models import (
 from src.core.power_map import PowerMapUnavailableError
 from src.core.power_map.snapshots import apply_org_snapshot
 from src.core.services.replication_issuance import issue_for_revision
+from src.core.status_checkin import CREDENTIAL_NAME, DEFAULT_STATUS_URL
 from src.core.tools import refresh_orgs, set_rep_fields
 from src.core.tools.refresh_orgs import (
     MERGED,
     MISSING,
+    MONITOR_ID_ENV,
     NOT_MODIFIED,
     RENAMED,
     UNAVAILABLE,
     UNNAMED,
     UPDATED,
+    Sweep,
     main,
     refresh_linked_orgs,
+    verdict,
 )
 from src.core.tools.rep_fields_gate import lock_info_item
 from tests.core._revision import REVISION_PATH, capture_revision, revision_path
@@ -125,9 +133,13 @@ async def _snapshot(session, snapshot=None) -> None:
     await apply_org_snapshot(session, snapshot or org(), now=T0)
 
 
-async def _refresh(session, pm: FakePowerMap, **kwargs) -> dict[str, str]:
+async def _sweep(session, pm: FakePowerMap, **kwargs) -> Sweep:
     kwargs.setdefault("pace_seconds", 0)
     return await refresh_linked_orgs(session, pm, **kwargs)
+
+
+async def _refresh(session, pm: FakePowerMap, **kwargs) -> dict[str, str]:
+    return (await _sweep(session, pm, **kwargs)).outcomes
 
 
 async def _row(session, pm_org_id: str = WSLCB_ID) -> PmOrganization:
@@ -542,6 +554,81 @@ async def test_the_sweep_stops_after_consecutive_failures(session):
     assert list(outcomes.values()) == [UNAVAILABLE] * refresh_orgs.MAX_CONSECUTIVE_FAILURES
 
 
+# ---------------------------------------------------------------------------
+# What the sweep reports to the check-in (archiver#476)
+# ---------------------------------------------------------------------------
+
+
+async def _link_many(session, ids: list[str]) -> None:
+    for pm_org_id in ids:
+        await _snapshot(session, org(pm_org_id, name=pm_org_id))
+        await _linked_item(session, pm_org_id)
+
+
+@pytest.mark.asyncio
+async def test_a_sweep_where_every_org_answered_has_none_unanswered(session):
+    await _link_many(session, [WSLCB_ID, OTHER_ID])
+    pm = FakePowerMap(org(), org(OTHER_ID, name=OTHER_ID))
+
+    sweep = await _sweep(session, pm)
+
+    assert (sweep.linked, sweep.unanswered, sweep.first_error) == (2, 0, None)
+
+
+@pytest.mark.asyncio
+async def test_a_sweep_keeps_the_first_errors_reason(session):
+    await _link_many(session, [WSLCB_ID, OTHER_ID])
+    pm = FakePowerMap(org(), org(OTHER_ID, name=OTHER_ID))
+    pm.failures.append(PowerMapUnavailableError("unexpected HTTP 503"))
+
+    sweep = await _sweep(session, pm)
+
+    assert (sweep.linked, sweep.unanswered, sweep.first_error) == (2, 1, "unexpected HTTP 503")
+
+
+@pytest.mark.asyncio
+async def test_orgs_a_stopped_sweep_never_reached_count_as_unanswered(session):
+    """Three failures in a row end the sweep; the two orgs after them got no answer either."""
+    ids = [f"01JPM0000000000000000000{n:02d}" for n in range(5)]
+    await _link_many(session, ids)
+    pm = FakePowerMap()
+    pm.unavailable = PowerMapUnavailableError("request timed out")
+
+    sweep = await _sweep(session, pm)
+
+    assert (sweep.linked, sweep.unanswered, sweep.first_error) == (5, 5, "request timed out")
+
+
+@pytest.mark.asyncio
+async def test_a_sweep_halted_by_a_long_retry_after_counts_every_org(session):
+    await _link_many(session, [WSLCB_ID, OTHER_ID, WINNER_ID])
+    pm = FakePowerMap()
+    pm.unavailable = PowerMapUnavailableError("rate limited (HTTP 429)", retry_after=600)
+
+    sweep = await _sweep(session, pm, sleep=_Sleeps())
+
+    assert (sweep.unanswered, sweep.first_error) == (3, "rate limited (HTTP 429)")
+
+
+@pytest.mark.asyncio
+async def test_an_unnamed_org_is_an_answer(session):
+    """A 200 with no canonical name is a data problem, logged at ERROR, not an outage."""
+    await _snapshot(session)
+    await _linked_item(session)
+    pm = FakePowerMap(org(name=None, pm_updated_at=T1, etag='"v2"'))
+
+    sweep = await _sweep(session, pm)
+
+    assert (sweep.outcomes, sweep.unanswered) == ({WSLCB_ID: UNNAMED}, 0)
+
+
+@pytest.mark.asyncio
+async def test_a_sweep_with_no_linked_orgs_reports_zero(session):
+    sweep = await _sweep(session, FakePowerMap())
+
+    assert (sweep.linked, sweep.unanswered, sweep.first_error) == (0, 0, None)
+
+
 @pytest.mark.asyncio
 async def test_a_rename_waits_for_the_info_item_row_lock(test_engine, committed_rows):
     """#302: the follower's write serializes with assign, save and link."""
@@ -561,7 +648,7 @@ async def test_a_rename_waits_for_the_info_item_row_lock(test_engine, committed_
         assert not done, "the follower renamed while another writer held the InfoItem row"
 
         await holder.commit()
-        assert await asyncio.wait_for(task, timeout=10.0) == {WSLCB_ID: RENAMED}
+        assert (await asyncio.wait_for(task, timeout=10.0)).outcomes == {WSLCB_ID: RENAMED}
 
 
 # ---------------------------------------------------------------------------
@@ -627,9 +714,16 @@ def stub_main_deps(monkeypatch):
     monkeypatch.setattr(refresh_orgs, "get_session_factory", lambda: _session)
     engine = AsyncMock()
     monkeypatch.setattr(refresh_orgs, "get_engine", MagicMock(return_value=engine))
-    sweep = AsyncMock(return_value={})
+    sweep = AsyncMock(return_value=Sweep(linked=0, outcomes={}))
     monkeypatch.setattr(refresh_orgs, "refresh_linked_orgs", sweep)
     return SimpleNamespace(gate=gate, client=client, session=session, engine=engine, sweep=sweep)
+
+
+@pytest.fixture
+def status():
+    """Every POST anywhere, answered 202: Status, stubbed (status#32)."""
+    with respx.mock(assert_all_called=False) as mock:
+        yield mock.post(url__regex=r".*").mock(return_value=httpx.Response(202))
 
 
 def test_main_sweeps_then_releases_the_client_and_engine(stub_main_deps):
@@ -669,3 +763,253 @@ def test_main_is_dormant_without_a_key(stub_main_deps, monkeypatch):
 
     assert main([]) == 0
     stub_main_deps.sweep.assert_not_awaited()
+
+
+def test_main_sends_no_check_in_when_dormant(stub_main_deps, monkeypatch, status):
+    monkeypatch.setattr(refresh_orgs, "power_map_from_env", lambda: None)
+
+    assert main([]) == 0
+    assert not status.called
+
+
+def test_main_sends_no_check_in_when_the_sweep_crashes(stub_main_deps, status):
+    """A crash is a failed unit; its silence is what the monitor's grace turns ``missing``."""
+    stub_main_deps.sweep.side_effect = RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        main([])
+    assert not status.called
+
+
+# ---------------------------------------------------------------------------
+# The verdict (archiver#476): what co-archiver-pm-org-refresh is told
+# ---------------------------------------------------------------------------
+
+#: The variables every check-in carries, so the monitor's template always renders.
+_VARIABLES = {"kind", "linked", "unanswered", "error", "body"}
+
+
+@pytest.mark.parametrize(
+    "outcomes",
+    [
+        {WSLCB_ID: NOT_MODIFIED, OTHER_ID: UPDATED},
+        {WSLCB_ID: RENAMED, OTHER_ID: MERGED},
+        {WSLCB_ID: MISSING, OTHER_ID: UNNAMED},
+    ],
+    ids=["304-200", "rename-merge", "gone-unnamed"],
+)
+def test_every_org_answered_is_ok(outcomes):
+    v = verdict(Sweep(linked=2, outcomes=outcomes))
+
+    assert v.status == "ok"
+    assert v.metadata() is None
+    variables = v.variables()
+    assert set(variables) == _VARIABLES
+    assert (variables["kind"], variables["linked"], variables["unanswered"]) == ("ok", "2", "0")
+    assert variables["error"] == ""
+
+
+def test_the_ok_body_counts_one_org_in_the_singular():
+    body = verdict(Sweep(linked=1, outcomes={WSLCB_ID: NOT_MODIFIED})).variables()["body"]
+
+    assert "the 1 linked org answered" in body
+
+
+def test_a_quiet_host_is_ok_so_the_monitor_never_goes_missing_for_it():
+    v = verdict(Sweep(linked=0, outcomes={}))
+
+    assert (v.status, v.variables()["linked"]) == ("ok", "0")
+
+
+def test_one_org_without_an_answer_alerts_on_the_first_run():
+    """D1: no N-in-a-row state; co-status's grace and renotify damp noise."""
+    sweep = Sweep(
+        linked=2,
+        outcomes={WSLCB_ID: NOT_MODIFIED, OTHER_ID: UNAVAILABLE},
+        first_error="unexpected HTTP 503",
+    )
+
+    v = verdict(sweep)
+
+    assert v.status == "alert"
+    assert v.metadata() == {"fault": "unreachable"}
+    variables = v.variables()
+    assert set(variables) == _VARIABLES
+    assert (variables["kind"], variables["unanswered"], variables["error"]) == (
+        "unreachable",
+        "1",
+        "unexpected HTTP 503",
+    )
+    assert "1 of 2" in variables["body"]
+    assert "unexpected HTTP 503" in variables["body"]
+
+
+def test_the_alert_says_it_reports_archivers_view_not_power_maps_health():
+    """D2: Power Map's own /ready monitor is co-power-map's; this is the proxy-side view."""
+    body = verdict(Sweep(linked=1, outcomes={}, first_error="request timed out")).variables()[
+        "body"
+    ]
+
+    assert "Archiver's view" in body
+    assert "co-power-map" in body
+
+
+# ---------------------------------------------------------------------------
+# The check-in from main (archiver#476)
+# ---------------------------------------------------------------------------
+
+MONITOR_ID = "01M4KMDDN3XWJR0GCECTAYMV00"
+CHECKIN_URL = f"{DEFAULT_STATUS_URL}/api/v1/monitors/{MONITOR_ID}/checkin"
+KEY = "sk_pm_refresh"
+
+
+def _credentials(tmp_path: Path, key: str | None = KEY) -> Path:
+    """A ``$CREDENTIALS_DIRECTORY`` as the unit hands it over."""
+    directory = tmp_path / "credentials"
+    directory.mkdir(exist_ok=True)
+    if key is not None:
+        (directory / CREDENTIAL_NAME).write_text(f"{key}\n")
+    return directory
+
+
+@pytest.fixture
+def unit_env(monkeypatch, tmp_path) -> None:
+    """What the unit hands ``main``: the monitor id and the key credential."""
+    monkeypatch.setenv(MONITOR_ID_ENV, MONITOR_ID)
+    monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(_credentials(tmp_path)))
+
+
+@pytest.fixture
+def errors(monkeypatch) -> _Spy:
+    spy = _Spy()
+    monkeypatch.setattr(refresh_orgs.logger, "error", spy)
+    return spy
+
+
+def _body(route) -> dict:
+    (call,) = route.calls
+    return json.loads(call.request.content)
+
+
+def test_main_checks_in_ok_when_every_org_answered(stub_main_deps, unit_env, status):
+    stub_main_deps.sweep.return_value = Sweep(linked=1, outcomes={WSLCB_ID: NOT_MODIFIED})
+
+    assert main([]) == 0
+
+    (call,) = status.calls
+    assert call.request.headers["X-API-Key"] == KEY
+    body = json.loads(call.request.content)
+    assert body["status"] == "ok"
+    assert body["variables"]["kind"] == "ok"
+    assert "metadata" not in body
+
+
+def test_main_alerts_and_still_exits_0_when_power_map_did_not_answer(
+    stub_main_deps, unit_env, status
+):
+    """The exit code stays as it was: an unreachable Power Map is never a failed unit."""
+    stub_main_deps.sweep.return_value = Sweep(
+        linked=2, outcomes={WSLCB_ID: UNAVAILABLE}, first_error="unexpected HTTP 503"
+    )
+
+    assert main([]) == 0
+
+    body = _body(status)
+    assert body["status"] == "alert"
+    assert body["metadata"] == {"fault": "unreachable"}
+    assert body["variables"]["unanswered"] == "2"
+    assert body["variables"]["error"] == "unexpected HTTP 503"
+
+
+def test_main_checks_in_from_a_host_with_no_linked_orgs(stub_main_deps, unit_env, status):
+    stub_main_deps.sweep.return_value = Sweep(linked=0, outcomes={})
+
+    assert main([]) == 0
+
+    assert _body(status)["status"] == "ok"
+
+
+def test_main_without_a_monitor_id_warns_sends_nothing_and_exits_0(
+    stub_main_deps, monkeypatch, tmp_path, status, warnings
+):
+    """Until Status provisions the monitor, the unit ships without its id."""
+    monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(_credentials(tmp_path)))
+    stub_main_deps.sweep.return_value = Sweep(linked=1, outcomes={WSLCB_ID: UNAVAILABLE})
+
+    assert main([]) == 0
+
+    assert not status.called
+    assert any(MONITOR_ID_ENV in m for m in warnings.messages)
+
+
+def test_main_with_a_monitor_id_that_is_not_a_ulid_sends_nothing(
+    stub_main_deps, unit_env, monkeypatch, status, errors
+):
+    monkeypatch.setenv(MONITOR_ID_ENV, "../x")
+    stub_main_deps.sweep.return_value = Sweep(linked=0, outcomes={})
+
+    assert main([]) == 0
+
+    assert not status.called
+    assert errors.messages
+
+
+@pytest.mark.parametrize("key", [None, ""], ids=["absent", "the-empty-fallback"])
+def test_main_without_a_key_sends_nothing_and_exits_0(
+    stub_main_deps, monkeypatch, tmp_path, status, errors, key
+):
+    monkeypatch.setenv(MONITOR_ID_ENV, MONITOR_ID)
+    monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(_credentials(tmp_path, key)))
+    stub_main_deps.sweep.return_value = Sweep(linked=0, outcomes={})
+
+    assert main([]) == 0
+
+    assert not status.called
+    assert any(CREDENTIAL_NAME in m for m in errors.messages)
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [httpx.Response(401, json={"detail": "bad key"}), httpx.ConnectError("refused")],
+    ids=["refused", "unreachable"],
+)
+def test_a_check_in_status_does_not_take_never_changes_the_exit_code(
+    stub_main_deps, unit_env, errors, answer
+):
+    """BACKUP.md's rule: a failed check-in is logged, and the monitor's silence is the alarm."""
+    stub_main_deps.sweep.return_value = Sweep(linked=0, outcomes={})
+    with respx.mock:
+        respx.post(CHECKIN_URL).mock(side_effect=[answer])
+
+        assert main([]) == 0
+
+    assert errors.records
+    assert KEY not in repr(errors.records)
+
+
+def test_test_alert_asks_power_map_nothing_and_opens_no_database(
+    stub_main_deps, unit_env, monkeypatch, status
+):
+    """The operator's post-provisioning step: proves the channels, as drift's does."""
+
+    def _untouched(*_args, **_kwargs):
+        raise AssertionError("--test-alert must not reach Power Map or the database")
+
+    monkeypatch.setattr(refresh_orgs, "power_map_from_env", _untouched)
+    monkeypatch.setattr(refresh_orgs, "get_database_url", _untouched)
+
+    assert main(["--test-alert"]) == 0
+
+    body = _body(status)
+    assert body["status"] == "alert"
+    assert body["metadata"] == {"fault": "test"}
+    assert set(body["variables"]) == _VARIABLES
+    assert body["variables"]["kind"] == "test"
+
+
+def test_test_alert_exits_1_when_status_does_not_take_it(stub_main_deps, unit_env):
+    """A hand run: the operator needs to know the alert never landed."""
+    with respx.mock:
+        respx.post(CHECKIN_URL).mock(return_value=httpx.Response(503))
+
+        assert main(["--test-alert"]) == 1

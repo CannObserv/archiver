@@ -1,7 +1,8 @@
-# archiver — Monitoring: the drift check and liveness
+# archiver — Monitoring: the drift check, liveness and the Power Map follower
 
-The two co-status checks that watch production from this repo: the drift check (is live
-behind `main` in code that runs?) and the service's liveness heartbeat. Split from
+The co-status checks that watch production from this repo: the drift check (is live
+behind `main` in code that runs?), the service's liveness heartbeat, and the Power Map
+org follower's view of Power Map. Split from
 [DEPLOYMENT.md](DEPLOYMENT.md), which keeps releases, the service user and the timer roster; the
 units are [deploy/README.md](../deploy/README.md), and the nightly backup's check-in is
 [BACKUP.md](BACKUP.md).
@@ -158,3 +159,80 @@ check-ins still land while it is paused. Re-enable it after the restart. A deplo
 needs this. Its worst silence is about 900 s: up to 300 s since the last `ok`, a stop of 90 s
 or less, the 120 s verify, a switch-back restart, and then the 300 s first tick. The
 monitor allows 1200 s (interval plus grace).
+
+## The Power Map follower check (archiver#476)
+
+`archiver-pm-org-refresh.timer` runs the org follower hourly (#305; `deploy/README.md`
+§ Power Map org follower). Before #476 an unreachable Power Map was journal lines and
+exit 0, so the 20 h outage of 2026-10-31 → 11-01 and the one-run blip of 2026-11-17
+went unnoticed. Now each configured run checks in once to Status's
+**`co-archiver-pm-org-refresh`** monitor (tenant `co-archiver`; id pending
+provisioning). The rules are in `src/core/tools/refresh_orgs.py` (`Sweep`, `verdict`).
+
+| Kind | When | Status sees |
+|---|---|---|
+| `ok` | every linked org answered: 200, 304, merged, gone, or a 200 with no canonical name (`unnamed`, an ERROR line, a data problem). **None linked is `ok` too**, so a quiet host never goes `missing` | `ok` |
+| `unreachable` | **any** linked org got no answer: timeout, transport error, 5xx, 429, a rejected key. Orgs a stopped sweep never reached (three failures in a row, or a `Retry-After` over 60 s) count as unanswered, and so does a merged org whose winner then got no answer: its snapshot was not refreshed | `alert` on the **first** such run (D1, no N-in-a-row) |
+| `test` | `--test-alert`, by hand; asks Power Map and the database nothing | `alert` |
+| silent | dormant (`ARCHIVER_POWER_MAP_API_KEY` unset), a crash (a failed unit), a sweep killed at `TimeoutStartSec=900`, Status unreachable | **nothing**; past the grace, `missing` |
+
+**Whose view.** This is **Archiver's view of Power Map**: `ARCHIVER_POWER_MAP_BASE_URL`
+through the exe.dev proxy, with Archiver's key. Power Map's own health is
+`co-power-map`'s `power-map-ready`, which polls `localhost` `/ready` and skips the proxy
+on purpose (D2). Every body says so. An `unreachable` with Power Map's own monitor green
+points at the proxy, the network path or Archiver's key.
+
+**What a check-in carries**, every one, so the template always renders: `kind`,
+`linked`, `unanswered`, `error` (the first failure's reason, from a fixed vocabulary:
+`request timed out`, `transport error (<Class>)`, `Power Map rejected archiver's API key
+(HTTP 401)`, `rate limited (HTTP 429)`, `unexpected HTTP <n>`; empty on `ok`) and `body`.
+Never a URL, a key or journal text. An alert's `metadata.fault` is its kind (status#28),
+so a run of `unreachable` is one fault, reminded per the monitor's renotify and cleared
+by the next `ok`.
+
+**The exit code never moves** (BACKUP.md's rule): `unreachable`, a refused check-in, no
+monitor id (WARNING, "a Power Map outage will not be noticed"), a bad id or no key
+(ERROR) all exit 0. Only a crash exits non-zero, and sends nothing. A taken check-in logs
+`Power Map org refresh checked in` (`status`, `kind`, `checkin` 202).
+
+**The unit** keeps `EnvironmentFile=/etc/archiver/.env` (database and Power Map key), but
+the Status key arrives only as the tenant's `status-checkin-key` credential with the
+empty `SetCredential=` fallback, as drift and backup have it. It waits for
+`network-online.target` and `tailscaled.service`: `status:9000` is a tailnet name.
+`tests/conftest.py` scrubs `CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID`; tests stub Status
+(respx).
+
+### Turning it on (once, after provisioning)
+
+The PR that ships #476 has **no monitor id**, so each run warns and exits 0 until the id
+lands. After Status provisions `co-archiver-pm-org-refresh` (suggested 3600 s, grace
+5400 s, renotify daily: `OnUnitActiveSec=1h` from the last start plus `AccuracySec=5min` puts check-ins 60-65 min apart, and one missed run is absorbed),
+add the id to the unit in a one-line PR, merge and deploy:
+
+```
+Environment=CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID=<ULID from Status>
+```
+
+Then the first `ok` and the test alert, as drift's:
+
+```bash
+sudo systemctl start archiver-pm-org-refresh.service
+journalctl -u archiver-pm-org-refresh -n 5 -o cat   # "checked in", status ok, checkin 202
+sudo systemd-run --quiet --pipe --wait \
+  -p LoadCredential=status-checkin-key:/etc/archiver/status-checkin.key \
+  -p Environment=CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID=<ULID> \
+  -p WorkingDirectory=/srv/archiver/live -p User=archiver \
+  /srv/archiver/live/.venv/bin/python -m src.core.tools.refresh_orgs --test-alert
+sudo systemctl start archiver-pm-org-refresh.service   # its ok clears the test fault
+```
+
+The operator confirms the test alert in email and Slack. **Never run it with the real key
+or monitor id outside the unit**, bar that `--test-alert`: a stray `ok` resets the
+dead-man clock.
+
+### When it alerts
+
+| Kind | Remedy |
+|---|---|
+| `unreachable` | Check `co-power-map` first. Green there: the proxy path (`curl -sI https://power-map.exe.xyz/`), or the key (`error` names HTTP 401/403: `ARCHIVER_POWER_MAP_API_KEY` in `/etc/archiver/.env` is rejected; ask Power Map's operator for a new read key, replace it, then `sudo systemctl restart archiver` for the authoring path; the follower reads the file each run). Red there: Power Map's own outage; nothing to do here, the next `ok` clears it. Meanwhile `pm_organizations` is stale and the authoring path (Organization row, register wizard) fails |
+| `missing` | the follower isn't reporting: `systemctl status archiver-pm-org-refresh.timer`, `journalctl -u archiver-pm-org-refresh` (a crash, a killed sweep, `No CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID`, `no status-checkin-key credential`), the tailnet path (`curl http://status:9000/health`) |
