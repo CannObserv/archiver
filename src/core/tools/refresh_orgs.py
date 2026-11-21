@@ -23,6 +23,16 @@ to a successor is a human decision.
 
 The timer (``deploy/archiver-pm-org-refresh.timer``) runs ``main`` hourly, and
 it exits 0 without touching the database when Power Map is not configured.
+
+**The check-in (archiver#476).** Each configured run checks in once to Status's
+``co-archiver-pm-org-refresh`` monitor (:mod:`src.core.status_checkin`): ``ok``
+when every linked org answered (none linked included, so a quiet host never goes
+``missing``); ``alert`` on the first run where any got no answer, unreached
+orgs of a stopped sweep counted (D1). It reports *Archiver's* view of Power Map,
+over the proxy with Archiver's key; Power Map's own health is ``co-power-map``'s
+(D2). The check-in never changes the exit code (BACKUP.md's rule): an
+unreachable Power Map, a missing monitor id or key, a Status that refuses - all
+exit 0, logged. A crash sends nothing, and the monitor goes ``missing``.
 """
 
 from __future__ import annotations
@@ -33,8 +43,11 @@ import os
 import random
 import sys
 from collections import Counter
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Literal
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +68,14 @@ from src.core.power_map.client import (
 )
 from src.core.power_map.snapshots import OrgUnnamedError, apply_org_snapshot, org_values
 from src.core.rep_fields import OrgValues
+from src.core.status_checkin import (
+    CREDENTIAL_NAME,
+    DEFAULT_STATUS_URL,
+    MONITOR_ID_PATTERN,
+    STATUS_URL_ENV,
+    post_checkin,
+    read_key,
+)
 from src.core.tools.set_rep_fields import (
     active_assignments,
     assignment_refusals,
@@ -92,6 +113,82 @@ Sleep = Callable[[float], Awaitable[None]]
 #: (``MAX_CONSECUTIVE_FAILURES``) before the rest were ever checked.
 _shuffle = random.shuffle
 
+#: ``co-archiver-pm-org-refresh``, tenant ``co-archiver`` (archiver#476).
+MONITOR_ID_ENV = "CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID"
+CREDENTIALS_DIRECTORY_ENV = "CREDENTIALS_DIRECTORY"
+#: Which side the check-in reports (D2), on every body.
+VIEW = (
+    "Archiver's view of Power Map (its public address, with Archiver's key); "
+    "Power Map's own health is co-power-map's power-map-ready"
+)
+
+
+@dataclass(frozen=True)
+class Sweep:
+    """One sweep's result: the linked orgs, each checked id's outcome, the first error."""
+
+    linked: int
+    outcomes: dict[str, str] = field(default_factory=dict)
+    #: The first ``PowerMapUnavailableError.reason``: a fixed vocabulary, no URL, no key.
+    first_error: str | None = None
+
+    @property
+    def unanswered(self) -> int:
+        """Linked orgs with no answer: ``unavailable``, or never reached by a stopped sweep."""
+        return self.linked - sum(1 for o in self.outcomes.values() if o != UNAVAILABLE)
+
+
+@dataclass(frozen=True)
+class Verdict:
+    """What to tell ``co-archiver-pm-org-refresh``, and the variables its template renders."""
+
+    kind: Literal["ok", "unreachable", "test"]
+    body: str
+    linked: int = 0
+    unanswered: int = 0
+    error: str = ""
+
+    @property
+    def status(self) -> Literal["ok", "alert"]:
+        """The check-in's ``status``."""
+        return "ok" if self.kind == "ok" else "alert"
+
+    def variables(self) -> dict[str, str]:
+        """Every variable on every check-in, so the monitor's template always renders."""
+        return {
+            "kind": self.kind,
+            "linked": str(self.linked),
+            "unanswered": str(self.unanswered),
+            "error": self.error,
+            "body": self.body,
+        }
+
+    def metadata(self) -> dict[str, str] | None:
+        """An alert's fault (status#28); an ok names none."""
+        return {"fault": self.kind} if self.status == "alert" else None
+
+
+def verdict(sweep: Sweep) -> Verdict:
+    """``alert`` on the first run any linked org got no answer (D1); else ``ok``."""
+    if not sweep.unanswered:
+        body = f"{VIEW}: all {sweep.linked} linked orgs answered"
+        return Verdict("ok", body, sweep.linked)
+    error = sweep.first_error or "no answer"
+    body = (
+        f"{VIEW}: {sweep.unanswered} of {sweep.linked} linked orgs got no answer "
+        f"(first: {error}); their pm_organizations snapshots are not refreshed"
+    )
+    return Verdict("unreachable", body, sweep.linked, sweep.unanswered, error)
+
+
+def deliberate_alert() -> Verdict:
+    """The alert ``--test-alert`` sends: proves the channels, asks Power Map nothing."""
+    return Verdict(
+        "test",
+        f"{VIEW}: a test alert from archiver's org follower, sent by hand; Power Map was not asked",
+        error="test",
+    )
+
 
 async def refresh_linked_orgs(
     db: AsyncSession,
@@ -99,8 +196,8 @@ async def refresh_linked_orgs(
     *,
     pace_seconds: float = PACE_SECONDS,
     sleep: Sleep = asyncio.sleep,
-) -> dict[str, str]:
-    """Check every linked org once, in random order; returns each checked id's outcome.
+) -> Sweep:
+    """Check every linked org once, in random order; returns the :class:`Sweep`.
 
     Commits once per org. Power Map is asked outside any transaction, so no
     lock is held across an HTTP round trip.
@@ -139,7 +236,7 @@ async def refresh_linked_orgs(
             "outcomes": dict(Counter(outcomes.values())),
         },
     )
-    return outcomes
+    return Sweep(len(rows), outcomes, fetch.first_error)
 
 
 class _Fetcher:
@@ -155,6 +252,7 @@ class _Fetcher:
         self._sleep = sleep
         self._sent = False
         self.halted = False
+        self.first_error: str | None = None
 
     async def get_org(self, pm_org_id: str, etag: str | None = None) -> OrgResult:
         for attempt in range(2):  # the first try, and one retry after a short wait
@@ -164,6 +262,7 @@ class _Fetcher:
                 if e.retry_after is not None and e.retry_after > MAX_RETRY_AFTER_SECONDS:
                     self.halted = True  # on the retry too (CR 12)
                 if e.retry_after is None or self.halted or attempt:
+                    self.first_error = self.first_error or e.reason
                     raise
                 await self._sleep(e.retry_after)
         raise AssertionError("unreachable: the second attempt returns or raises")
@@ -337,17 +436,70 @@ async def _log_moves(
         log_moves(message, item.info_item_id, moves)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Timer entrypoint: one sweep, exit 0.
+def checkin(v: Verdict, *, environ: Mapping[str, str]) -> bool:
+    """One check-in to ``co-archiver-pm-org-refresh``; True when Status took it.
 
-    Dormant (exit 0, no database) when ``ARCHIVER_POWER_MAP_API_KEY`` is unset.
-    An unreachable Power Map is a journald line and the next run's retry, never
-    a failed unit; only a crash here exits non-zero.
+    **Never raises** (backup's ``checkin``): whatever goes wrong is logged and
+    swallowed, so the sweep's exit code stands. No monitor id is a warning, not
+    an error: the unit ships without one until Status provisions it.
+    """
+    monitor_id = environ.get(MONITOR_ID_ENV, "").strip()
+    if not monitor_id:
+        logger.warning(
+            f"No {MONITOR_ID_ENV}: no check-in sent, and a Power Map outage will not be noticed"
+        )
+        return False
+    if not MONITOR_ID_PATTERN.fullmatch(monitor_id):
+        logger.error(f"Check-in not sent: {MONITOR_ID_ENV} is not a ULID")
+        return False
+    credentials = environ.get(CREDENTIALS_DIRECTORY_ENV, "").strip()
+    key = read_key(Path(credentials) if credentials else None)
+    if not key:
+        logger.error(f"Check-in not sent: no {CREDENTIAL_NAME} credential")
+        return False
+    try:
+        code = post_checkin(
+            environ.get(STATUS_URL_ENV) or DEFAULT_STATUS_URL,
+            monitor_id,
+            key,
+            v.status,
+            v.variables(),
+            metadata=v.metadata(),
+        )
+    except Exception as e:  # CheckinFailed, or anything httpx raises outside HTTPError
+        logger.error(
+            "Power Map org refresh check-in failed",
+            extra={"status": v.status, "error": f"{type(e).__name__}: {e}"},
+        )
+        return False
+    logger.info(
+        "Power Map org refresh checked in",
+        extra={"status": v.status, "kind": v.kind, "checkin": code},
+    )
+    return True
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Timer entrypoint: one sweep, one check-in, exit 0.
+
+    Dormant (exit 0, no database, no check-in) when ``ARCHIVER_POWER_MAP_API_KEY``
+    is unset. An unreachable Power Map is an ``alert`` check-in and the next
+    run's retry, never a failed unit; the check-in never changes the exit code;
+    only a crash here exits non-zero. ``--test-alert`` sends one alert and asks
+    Power Map and the database nothing: exit 0 when Status took it, else 1.
     """
     parser = argparse.ArgumentParser(description="archiver Power Map org follower")
-    parser.parse_args(argv)
+    parser.add_argument(
+        "--test-alert",
+        action="store_true",
+        help="send one test alert to the monitor; ask Power Map and the database nothing",
+    )
+    args = parser.parse_args(argv)
 
     configure_logging()
+
+    if args.test_alert:
+        return 0 if checkin(deliberate_alert(), environ=os.environ) else 1
 
     power_map = power_map_from_env()
     if power_map is None:
@@ -357,15 +509,16 @@ def main(argv: list[str] | None = None) -> int:
     database_url = get_database_url()
     assert_production_db_allowed(database_url, allow_flag=os.environ.get(ALLOW_PRODUCTION_DB_ENV))
 
-    async def _run() -> None:
+    async def _run() -> Sweep:
         try:
             async with get_session_factory()() as db:
-                await refresh_linked_orgs(db, power_map)
+                return await refresh_linked_orgs(db, power_map)
         finally:
             await power_map.aclose()
             await get_engine().dispose()
 
-    asyncio.run(_run())
+    sweep = asyncio.run(_run())
+    checkin(verdict(sweep), environ=os.environ)
     return 0
 
 

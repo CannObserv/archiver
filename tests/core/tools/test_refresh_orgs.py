@@ -648,7 +648,7 @@ async def test_a_rename_waits_for_the_info_item_row_lock(test_engine, committed_
         assert not done, "the follower renamed while another writer held the InfoItem row"
 
         await holder.commit()
-        assert await asyncio.wait_for(task, timeout=10.0) == {WSLCB_ID: RENAMED}
+        assert (await asyncio.wait_for(task, timeout=10.0)).outcomes == {WSLCB_ID: RENAMED}
 
 
 # ---------------------------------------------------------------------------
