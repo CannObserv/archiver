@@ -267,8 +267,8 @@ Each configured run then checks in once to co-status's `co-archiver-pm-org-refre
 (#476): `ok` when every linked org answered, `alert` when any got no answer. The
 check-in never changes the exit code. The unit gets the tenant's `status-checkin-key`
 credential and waits for the tailnet; the unit names the monitor id
-(`CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID`, status#134). Rules and runbook: `docs/MONITORING.md` § The Power Map follower
-check.
+(`CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID`, status#134). Rules and runbook:
+`docs/MONITORING.md` § The Power Map follower check.
 
 The service holds the third sanctioned `Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1`,
 and the first write-capable one outside `archiver.service`; it must never set

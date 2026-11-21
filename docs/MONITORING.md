@@ -167,7 +167,8 @@ monitor allows 1200 s (interval plus grace).
 exit 0, so the 20 h outage of 2026-10-31 → 11-01 and the one-run blip of 2026-11-17
 went unnoticed. Now each configured run checks in once to Status's
 **`co-archiver-pm-org-refresh`** monitor (`01M7ZWG4RRFFNW6GVP63CPT3DJ`, tenant
-`co-archiver`, CannObserv/status#134; 3600 s, grace 5400 s, renotify daily). The rules are in `src/core/tools/refresh_orgs.py` (`Sweep`, `verdict`).
+`co-archiver`, CannObserv/status#134; 3600 s, grace 5400 s, renotify daily). The rules
+are in `src/core/tools/refresh_orgs.py` (`Sweep`, `verdict`).
 
 | Kind | When | Status sees |
 |---|---|---|
@@ -207,7 +208,10 @@ empty `SetCredential=` fallback, as drift and backup have it. It waits for
 Status created the monitor **disabled** (status#134): `OnUnitActiveSec=1h` from the last
 start plus `AccuracySec=5min` puts check-ins 60-65 min apart, so the 5400 s grace absorbs
 one missed run. The unit names the id. After the deploy that carries it, the first `ok`;
-Status enables the monitor on it; then the test alert, as drift's:
+Status enables the monitor on it; then the test alert, as drift's. A disabled monitor
+still records check-ins and dispatches alerts (only `missing` waits for `enabled`), so a
+real outage before then alerts; the test alert waits for an `ok`, never inside an open
+`unreachable` fault:
 
 ```bash
 sudo systemctl start archiver-pm-org-refresh.service
