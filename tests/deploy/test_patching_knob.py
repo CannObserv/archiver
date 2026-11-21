@@ -32,6 +32,8 @@ everywhere, plus the installed GC timer and apt pins on the host:
 - **A prune stage's soak ending stays green**: its review-by date is the
   probe's prompt for the next stage, not a deadline for every change's CI.
   Every other expired exception is red.
+- **nginx and docker are purged** (#512): each ``purged:`` line's date is a
+  recheck of the image, at most 90 days out, and its passing is red.
 - **No ``caller``, and no ``image-owner``**: no cohort repo calls this host's
   API (#513), and this repo is public, so a private one gets no line
   (gregoryfoster/skills#350).
@@ -59,6 +61,8 @@ INSTALLED_PINS = Path("/etc/apt/preferences.d")
 HOST = "co-registrar"
 #: Prune stages whose review-by date is a soak, not a deadline (pruning.md).
 PRUNE_STAGES = ("disabled:", "removed:")
+#: The day nginx and docker were purged (#512).
+PURGED_ON = date(2026, 11, 21)
 WINDOW = ["Mon", "06:00-08:00"]
 
 #: Each followed origin's pin file, and the packages it was added for.
@@ -210,6 +214,25 @@ def test_a_prune_soak_ending_does_not_turn_the_knob_red() -> None:
         pytest.skip("no prune stage declared")
     today = (max(soaks) + timedelta(days=1)).isoformat()
     _assert_clean(_read_knob("--today", today))
+
+
+def test_the_image_leftovers_are_declared_purged_with_a_recheck() -> None:
+    """nginx and docker went disable -> savepoint -> purge (#375, #512). A
+    ``purged:`` line has no next stage: it stays while the image ships them,
+    and its date is a recheck, not a soak, so its passing turns this suite
+    red, which is the prompt to read the image again (the skill's pruning.md).
+    The skill allows 90 days at most."""
+    stages = {
+        what.split(":", 1)[1]: (what.split(":", 1)[0], date.fromisoformat(review_by))
+        for what, review_by, *_ in _named("exception")
+        if what.split(":", 1)[0] in ("disabled", "removed", "purged", "keep")
+    }
+    assert {name: stage for name, (stage, _) in stages.items()} == {
+        "nginx": "purged",
+        "docker": "purged",
+    }
+    for name, (_, recheck) in stages.items():
+        assert PURGED_ON < recheck <= PURGED_ON + timedelta(days=90), name
 
 
 def test_no_exception_reason_is_cut_short_by_a_comment() -> None:
