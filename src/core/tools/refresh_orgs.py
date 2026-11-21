@@ -171,8 +171,8 @@ class Verdict:
 def verdict(sweep: Sweep) -> Verdict:
     """``alert`` on the first run any linked org got no answer (D1); else ``ok``."""
     if not sweep.unanswered:
-        body = f"{VIEW}: all {sweep.linked} linked orgs answered"
-        return Verdict("ok", body, sweep.linked)
+        orgs = "the 1 linked org" if sweep.linked == 1 else f"all {sweep.linked} linked orgs"
+        return Verdict("ok", f"{VIEW}: {orgs} answered", sweep.linked)
     error = sweep.first_error or "no answer"
     body = (
         f"{VIEW}: {sweep.unanswered} of {sweep.linked} linked orgs got no answer "

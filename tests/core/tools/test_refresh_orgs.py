@@ -809,6 +809,12 @@ def test_every_org_answered_is_ok(outcomes):
     assert variables["error"] == ""
 
 
+def test_the_ok_body_counts_one_org_in_the_singular():
+    body = verdict(Sweep(linked=1, outcomes={WSLCB_ID: NOT_MODIFIED})).variables()["body"]
+
+    assert "the 1 linked org answered" in body
+
+
 def test_a_quiet_host_is_ok_so_the_monitor_never_goes_missing_for_it():
     v = verdict(Sweep(linked=0, outcomes={}))
 
