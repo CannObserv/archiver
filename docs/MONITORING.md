@@ -206,7 +206,7 @@ empty `SetCredential=` fallback, as drift and backup have it. It waits for
 
 The PR that ships #476 has **no monitor id**, so each run warns and exits 0 until the id
 lands. After Status provisions `co-archiver-pm-org-refresh` (suggested 3600 s, grace
-5400 s, renotify daily: the run comes every 60-80 min and one missed run is absorbed),
+5400 s, renotify daily: `OnUnitActiveSec=1h` from the last start plus `AccuracySec=5min` puts check-ins 60-65 min apart, and one missed run is absorbed),
 add the id to the unit in a one-line PR, merge and deploy:
 
 ```
