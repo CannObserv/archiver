@@ -234,5 +234,5 @@ dead-man clock.
 
 | Kind | Remedy |
 |---|---|
-| `unreachable` | Check `co-power-map` first. Green there: the proxy path (`curl -sI https://power-map.exe.xyz/`), or the key (`error` names HTTP 401/403; rotate per power-map's issuing doc). Red there: Power Map's own outage; nothing to do here, the next `ok` clears it. Meanwhile `pm_organizations` is stale and the authoring path (Organization row, register wizard) fails |
+| `unreachable` | Check `co-power-map` first. Green there: the proxy path (`curl -sI https://power-map.exe.xyz/`), or the key (`error` names HTTP 401/403: `ARCHIVER_POWER_MAP_API_KEY` in `/etc/archiver/.env` is rejected; ask Power Map's operator for a new read key, replace it, then `sudo systemctl restart archiver` for the authoring path; the follower reads the file each run). Red there: Power Map's own outage; nothing to do here, the next `ok` clears it. Meanwhile `pm_organizations` is stale and the authoring path (Organization row, register wizard) fails |
 | `missing` | the follower isn't reporting: `systemctl status archiver-pm-org-refresh.timer`, `journalctl -u archiver-pm-org-refresh` (a crash, a killed sweep, `No CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID`, `no status-checkin-key credential`), the tailnet path (`curl http://status:9000/health`) |
