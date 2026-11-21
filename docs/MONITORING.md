@@ -166,8 +166,9 @@ monitor allows 1200 s (interval plus grace).
 § Power Map org follower). Before #476 an unreachable Power Map was journal lines and
 exit 0, so the 20 h outage of 2026-10-31 → 11-01 and the one-run blip of 2026-11-17
 went unnoticed. Now each configured run checks in once to Status's
-**`co-archiver-pm-org-refresh`** monitor (tenant `co-archiver`; id pending
-provisioning). The rules are in `src/core/tools/refresh_orgs.py` (`Sweep`, `verdict`).
+**`co-archiver-pm-org-refresh`** monitor (`01M7ZWG4RRFFNW6GVP63CPT3DJ`, tenant
+`co-archiver`, CannObserv/status#134; 3600 s, grace 5400 s, renotify daily). The rules
+are in `src/core/tools/refresh_orgs.py` (`Sweep`, `verdict`).
 
 | Kind | When | Status sees |
 |---|---|---|
@@ -204,23 +205,20 @@ empty `SetCredential=` fallback, as drift and backup have it. It waits for
 
 ### Turning it on (once, after provisioning)
 
-The PR that ships #476 has **no monitor id**, so each run warns and exits 0 until the id
-lands. After Status provisions `co-archiver-pm-org-refresh` (suggested 3600 s, grace
-5400 s, renotify daily: `OnUnitActiveSec=1h` from the last start plus `AccuracySec=5min` puts check-ins 60-65 min apart, and one missed run is absorbed),
-add the id to the unit in a one-line PR, merge and deploy:
-
-```
-Environment=CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID=<ULID from Status>
-```
-
-Then the first `ok` and the test alert, as drift's:
+Status created the monitor **disabled** (status#134): `OnUnitActiveSec=1h` from the last
+start plus `AccuracySec=5min` puts check-ins 60-65 min apart, so the 5400 s grace absorbs
+one missed run. The unit names the id. After the deploy that carries it, the first `ok`;
+Status enables the monitor on it; then the test alert, as drift's. A disabled monitor
+still records check-ins and dispatches alerts (only `missing` waits for `enabled`), so a
+real outage before then alerts; the test alert waits for an `ok`, never inside an open
+`unreachable` fault:
 
 ```bash
 sudo systemctl start archiver-pm-org-refresh.service
 journalctl -u archiver-pm-org-refresh -n 5 -o cat   # "checked in", status ok, checkin 202
 sudo systemd-run --quiet --pipe --wait \
   -p LoadCredential=status-checkin-key:/etc/archiver/status-checkin.key \
-  -p Environment=CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID=<ULID> \
+  -p Environment=CO_ARCHIVER_PM_ORG_REFRESH_MONITOR_ID=01M7ZWG4RRFFNW6GVP63CPT3DJ \
   -p WorkingDirectory=/srv/archiver/live -p User=archiver \
   /srv/archiver/live/.venv/bin/python -m src.core.tools.refresh_orgs --test-alert
 sudo systemctl start archiver-pm-org-refresh.service   # its ok clears the test fault

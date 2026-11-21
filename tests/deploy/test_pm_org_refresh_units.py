@@ -70,16 +70,19 @@ def test_service_waits_for_the_tailnet() -> None:
     assert {"network-online.target", "tailscaled.service"} <= set(wants)
 
 
-def test_service_monitor_id_when_named_is_a_ulid() -> None:
-    """Shipped without the id until Status provisions ``co-archiver-pm-org-refresh``
-    (the run then warns and exits 0); once named, a ULID or the run sends nothing."""
+MONITOR_ID = "01M7ZWG4RRFFNW6GVP63CPT3DJ"
+
+
+def test_service_names_the_monitor() -> None:
+    """``co-archiver-pm-org-refresh`` (CannObserv/status#134): without the id each
+    run warns and sends nothing, so a Power Map outage goes unnoticed."""
     ids = [
         v.split("=", 1)[1]
         for v in _directives(REPO_SERVICE, "Environment")
         if v.startswith(f"{MONITOR_ID_ENV}=")
     ]
-    assert len(ids) <= 1
-    assert all(MONITOR_ID_PATTERN.fullmatch(i) for i in ids)
+    assert ids == [MONITOR_ID]
+    assert MONITOR_ID_PATTERN.fullmatch(MONITOR_ID)
 
 
 def test_timer_ticks_hourly() -> None:
