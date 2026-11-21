@@ -263,6 +263,13 @@ run; so do three unanswered orgs in a row. The next hour retries. It logs
 `pm_org_merged` and `pm_org_missing` at WARNING
 (`sudo journalctl -u archiver-pm-org-refresh`).
 
+Each configured run then checks in once to co-status's `co-archiver-pm-org-refresh`
+(#476): `ok` when every linked org answered, `alert` when any got no answer. The
+check-in never changes the exit code. The unit gets the tenant's `status-checkin-key`
+credential and waits for the tailnet; its monitor id `Environment=` line lands once
+Status provisions it. Rules and runbook: `docs/MONITORING.md` § The Power Map follower
+check.
+
 The service holds the third sanctioned `Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1`,
 and the first write-capable one outside `archiver.service`; it must never set
 `ARCHIVER_BUS_CONSUMER`. The Power Map key is the switch: with none in
