@@ -59,13 +59,23 @@ DIGEST = "4" * 64  # unique to this module: the teardown keys on it
 PUBLIC_URL = "https://storage.googleapis.com/co-archive/archive/lock-probe/x.html"
 
 
-async def _wait_until_blocked(factory, timeout: float = 5.0) -> None:
-    """Return once some backend waits on a lock, so the order under test holds."""
+async def _backend_pid(session) -> int:
+    return (await session.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+
+
+async def _wait_until_blocked(factory, pid: int, timeout: float = 5.0) -> None:
+    """Return once backend ``pid`` waits on a lock, so the order under test holds.
+
+    Keyed on the writer's own backend: another run's waiter must not stand in for it.
+    """
     deadline = asyncio.get_running_loop().time() + timeout
     async with factory() as probe:
         while True:
             waiting = (
-                await probe.execute(text("SELECT count(*) FROM pg_locks WHERE NOT granted"))
+                await probe.execute(
+                    text("SELECT count(*) FROM pg_locks WHERE pid = :pid AND NOT granted"),
+                    {"pid": pid},
+                )
             ).scalar_one()
             await probe.rollback()  # a fresh snapshot each poll; hold nothing
             if waiting:
@@ -155,12 +165,14 @@ async def test_a_persist_outcome_behind_the_reaper_lands_after_it(stale_persist)
     async with factory() as reaping, factory() as persisting:
         assert await reap_open_persists(reaping, horizon=HORIZON) == (1, 1)  # holds the lock
 
+        pid = await _backend_pid(persisting)
+
         async def _write() -> None:
             await _persisted(persisting, command_id)
             await persisting.commit()
 
         writing = asyncio.create_task(_write())
-        await _wait_until_blocked(factory)
+        await _wait_until_blocked(factory, pid)
         assert not writing.done()
         await reaping.commit()
         await asyncio.wait_for(writing, timeout=5)
@@ -276,12 +288,14 @@ async def test_a_replication_outcome_behind_the_reaper_lands_after_it(stale_repl
         assert await reap_open_commands(reaping, horizon=HORIZON) == 1
         await reaping.flush()  # the abandon takes the row lock
 
+        pid = await _backend_pid(completing)
+
         async def _write() -> None:
             await _complete(completing, command_id)
             await completing.commit()
 
         writing = asyncio.create_task(_write())
-        await _wait_until_blocked(factory)
+        await _wait_until_blocked(factory, pid)
         assert not writing.done()
         await reaping.commit()
         await asyncio.wait_for(writing, timeout=5)
