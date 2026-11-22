@@ -35,6 +35,9 @@ beforeEach(function () {
 
 afterEach(function () {
     document.removeEventListener("showFlash", onFlash);
+    // archiver#427: a swap's settle runs on a timer. One still pending when
+    // the last test ends fires after happy-dom's teardown and fails the run.
+    expect(document.querySelectorAll("." + htmx.config.settlingClass)).toHaveLength(0);
 });
 
 function onFlash(ev) {
