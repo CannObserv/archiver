@@ -282,11 +282,16 @@ async def test_the_replication_reaper_skips_a_command_whose_outcome_is_being_app
 
 @pytest.mark.asyncio
 async def test_a_replication_outcome_behind_the_reaper_lands_after_it(stale_replication):
-    """Reaper first: the success waits, then overwrites ``abandoned`` by primary key."""
+    """Reaper first: the success waits, then overwrites ``abandoned`` by primary key.
+
+    No flush before the writeback starts: ``reap_open_commands`` leaves its abandon
+    pending, so the only lock is the select's. Without it the writeback would not
+    wait; it would commit ``complete`` in the gap, and the reaper's later UPDATE
+    would write ``abandoned`` over it - the issue's race, closed by ``FOR UPDATE``.
+    """
     factory, command_id = stale_replication
     async with factory() as reaping, factory() as completing:
-        assert await reap_open_commands(reaping, horizon=HORIZON) == 1
-        await reaping.flush()  # the abandon takes the row lock
+        assert await reap_open_commands(reaping, horizon=HORIZON) == 1  # select-locked
 
         pid = await _backend_pid(completing)
 
