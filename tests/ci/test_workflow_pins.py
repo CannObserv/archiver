@@ -16,9 +16,17 @@ host's distro. ``ubuntu-latest`` moves to 26.04 on GitHub's schedule, between
 2026-10-19 and 2026-11-19 per actions/runner-images#14748. When the host moves,
 CI moves with it: on the host, ``test_runner_image_matches_the_host`` fails
 until it does.
+
+**The Node.** setup-node's ``node-version`` is a bare major, the host's own
+(#428): ``pre-ship.sh`` runs ``npm test`` on the host's Node before every push,
+and CI runs it again, so the two run one major. Dependabot moves setup-node's
+``uses:`` ref, never its ``with:`` input, so nothing else would move it. When
+the host moves, ``test_ci_node_matches_the_host`` fails on it until CI does.
 """
 
 import re
+import shutil
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -136,3 +144,42 @@ def test_os_version_id_reads_a_quoted_and_a_bare_value(tmp_path: Path) -> None:
     assert _os_version_id(os_release) == "26.04"
     os_release.write_text("VERSION_ID=24.04\n")
     assert _os_version_id(os_release) == "24.04"
+
+
+def _setup_node_versions() -> list[str]:
+    """Every setup-node step's ``node-version``, in every workflow."""
+    return [
+        str(step.get("with", {}).get("node-version"))
+        for workflow in sorted(CI.parent.glob("*.y*ml"))
+        for job in _jobs(workflow).values()
+        for step in job.get("steps", [])
+        if step.get("uses", "").split("@")[0] == "actions/setup-node"
+    ]
+
+
+def _node_major(version: str) -> str:
+    found = re.fullmatch(r"v?(\d+)(?:\.\d+){0,2}", version.strip())
+    assert found, f"not a Node version: {version!r}"
+    return found[1]
+
+
+def test_setup_node_pins_a_bare_major() -> None:
+    versions = _setup_node_versions()
+    assert versions, "no setup-node step: the JS lint and tests run nowhere"
+    assert all(re.fullmatch(r"\d+", v) for v in versions), versions
+
+
+def test_ci_node_matches_the_host() -> None:
+    if not LIVE.is_symlink():
+        pytest.skip(f"{LIVE} absent: not the deploy host")
+    node = shutil.which("node")
+    assert node, "the deploy host has no node: pre-ship.sh's npm test cannot run"
+    host = subprocess.run([node, "--version"], capture_output=True, text=True, check=True)
+    assert set(_setup_node_versions()) == {_node_major(host.stdout)}
+
+
+def test_node_major_reads_a_release_and_a_bare_major() -> None:
+    assert _node_major("v24.22.3\n") == "24"
+    assert _node_major("24") == "24"
+    with pytest.raises(AssertionError):
+        _node_major("lts/*")
