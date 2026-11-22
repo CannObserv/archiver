@@ -2,21 +2,28 @@
 
 The same race #380 closed for captures (``test_capture_locking.py``, CR 1). A
 reaper reads its stale ``requested`` rows, then writes ``abandoned`` to each.
-Two orders of that against the ``content.artifacts`` consumer's writeback:
+The orders of that against the ``content.artifacts`` consumer's writeback:
 
-- **Consumer first.** The writeback has flushed its terminal state and holds the
-  row lock, uncommitted. A plain read would see ``requested``, its UPDATE would
-  wait for the lock, then write ``abandoned`` over the fresh outcome (and, for
-  persist, re-issue its digest). ``FOR UPDATE SKIP LOCKED`` skips the row this
-  tick; the next tick judges it on its committed state. Red without the fix:
-  the reaper's UPDATE waits out ``lock_timeout``.
-- **Reaper first.** The reaper holds the lock; the writeback, which loads its
-  command unlocked, waits on its own UPDATE and lands after the reaper commits.
-  Its terminal state overwrites ``abandoned`` by primary key, so the row ends
-  truthful. For persist the re-issue stays in flight, a no-op on a
-  content-addressed key. Pinned here as the accepted behaviour, not changed.
+- **Consumer first** (both families). The writeback has flushed its terminal
+  state and holds the row lock, uncommitted. A plain read would see
+  ``requested``, its UPDATE would wait for the lock, then write ``abandoned``
+  over the fresh outcome (and, for persist, re-issue its digest). ``SKIP
+  LOCKED`` skips the row this tick; the next tick judges it on its committed
+  state. Red without the fix: persist's UPDATE waits out ``lock_timeout``, and
+  replication counts the row.
+- **The reaper's select-to-update gap** (replication). A plain read leaves the
+  row unlocked until the reaper's UPDATE, so a writeback could commit in
+  between and be overwritten without either side waiting. ``FOR UPDATE`` locks
+  at the select, which turns this into the next order. Red without the fix: the
+  writeback never blocks. Persist's reaper flushes inside the function, so the
+  gap can't be opened from outside it; its select is the same statement.
+- **Reaper first** (both families). The reaper holds the lock; the writeback,
+  which loads its command unlocked, waits on its own UPDATE and lands after the
+  reaper commits. Its terminal state overwrites ``abandoned`` by primary key,
+  so the row ends ``persisted``/``complete``. For persist the re-issue stays in
+  flight, a no-op on a content-addressed key. Pinned as accepted, not changed.
 
-Both run on the real database, two sessions from one factory, rows committed.
+All run on the real database, two sessions from one factory, rows committed.
 """
 
 from __future__ import annotations
