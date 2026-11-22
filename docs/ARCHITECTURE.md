@@ -22,7 +22,8 @@ Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-
   end to end, installed units against the live release, the needrestart drop-in
   and the memory reservation, the production read role (#348), and the SocratiCode
   client config and server pin. `tests/ci/` pins `.github/`: the Dependabot config,
-  the action SHA pins, the runner image and the uv cache prune (#192).
+  the action SHA pins, the runner image and the uv cache prune (#192), and the
+  setup-node major, the host's (#428).
 
 ```
 src/api/                       FastAPI routes, deps, schemas, serializers
