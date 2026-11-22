@@ -226,11 +226,16 @@ async def reap_open_commands(
     """
     cutoff = datetime.now(UTC) - horizon
     result = await session.execute(
-        select(ReplicationCommand).where(
+        select(ReplicationCommand)
+        .where(
             ReplicationCommand.state == STATE_REQUESTED,
             ReplicationCommand.closed_at.is_(None),
             ReplicationCommand.issued_at <= cutoff,
         )
+        # A row the consumer is writing is skipped this tick and judged on its
+        # committed state next tick; a plain read would wait, then overwrite a
+        # fresh ``complete`` with ``abandoned`` (#496, as #380 CR 1 for captures).
+        .with_for_update(skip_locked=True)
     )
     stale = list(result.scalars().all())
     now = datetime.now(UTC)

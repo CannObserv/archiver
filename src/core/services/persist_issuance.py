@@ -277,6 +277,11 @@ async def reap_open_persists(
                     PersistCommand.issued_at <= cutoff,
                 )
                 .order_by(PersistCommand.issued_at, PersistCommand.command_id)
+                # A row the consumer is writing is skipped this tick and judged
+                # on its committed state next tick; a plain read would wait,
+                # then overwrite a fresh ``persisted`` with ``abandoned`` and
+                # re-issue its digest (#496, as #380 CR 1 for captures).
+                .with_for_update(skip_locked=True)
             )
         )
         .scalars()
