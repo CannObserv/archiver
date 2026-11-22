@@ -134,6 +134,21 @@ export function installHtmx() {
     return htmx;
 }
 
+/**
+ * Wait out every settle htmx has pending (archiver#427). A swap settles
+ * `defaultSettleDelay` ms later on a real Node timer - vitest's `window` is
+ * the global, so happy-dom's teardown cannot cancel it - and one still pending
+ * when a file ends fires against the torn-down globals and fails the run.
+ * Node fires timers in expiry order, so one armed now for a millisecond more
+ * runs after every settle already pending.
+ * @returns {Promise<void>} Resolves once they have run.
+ */
+export function settle() {
+    return new Promise(function (resolve) {
+        setTimeout(resolve, htmx.config.defaultSettleDelay + 1);
+    });
+}
+
 /** Put back every global installHtmx() replaced. */
 export function restoreGlobals() {
     if (saved === null) { return; }

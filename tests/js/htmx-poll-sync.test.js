@@ -14,7 +14,9 @@
  * through a stubbed XHR that stays in flight until a test answers it.
  */
 import { describe, it, expect, afterAll, beforeEach, afterEach } from "vitest";
-import { installHtmx, respond, resetSent, restoreGlobals, sent } from "./support/htmx-harness.js";
+import {
+    installHtmx, respond, resetSent, restoreGlobals, sent, settle
+} from "./support/htmx-harness.js";
 
 let toasts = [];
 
@@ -33,10 +35,12 @@ beforeEach(function () {
     document.addEventListener("showFlash", onFlash);
 });
 
-afterEach(function () {
+afterEach(async function () {
     document.removeEventListener("showFlash", onFlash);
     // archiver#427: a swap's settle runs on a timer. One still pending when
-    // the last test ends fires after happy-dom's teardown and fails the run.
+    // the last test ends fires after happy-dom's teardown and fails the run,
+    // so each test waits its own out.
+    await settle();
     expect(document.querySelectorAll("." + htmx.config.settlingClass)).toHaveLength(0);
 });
 
