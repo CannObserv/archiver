@@ -225,6 +225,9 @@ abandoned any silent persist: a stored capture still owed a persist gets one,
 capped per digest. Each family sweeps in its own transaction; a defect in one
 is logged and contained.
 
+All three stale selects are `FOR UPDATE SKIP LOCKED` (#380 CR 1, #496): a row
+the consumer is writing is judged next tick, never overwritten with `abandoned`.
+
 ## Change-bus consumer - `info.watch-events` (archiver#369)
 
 Watcher's observed edges (`change_detected`, `watch_error`, `watch_recovered`), the design's
