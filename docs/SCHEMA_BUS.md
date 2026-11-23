@@ -36,7 +36,10 @@ keeps the registry tables; identifiers are verbatim there and here.
     three), plus `skipped` — terminal on arrival, nothing went on the wire. Skip reasons are
     **local** (`blob_absent`, `blob_expired_locally`, `unrenderable`, `destination_collision`,
     `unsupported_command`) and deliberately distinct from Replicator's producer-owned failure
-    tokens: these are conditions Archiver decided about before publishing.
+    tokens: these are conditions Archiver decided about before publishing. A success clears
+    `reason` and `detail` whatever preceded it (a non-terminal failure, or the reaper's
+    `abandoned`), as persist and capture do, so a `complete` row never carries a failure token
+    (#541); `closed_at` keeps its first stamp.
   - A skip is a *row*, not a log line. Absent one, the dashboard renders a replication that
     silently did not happen as "not yet" forever (archiver#171).
 - **`PersistCommand`** (`persist_commands`) — one `content.persist` occasion (archiver#276);
