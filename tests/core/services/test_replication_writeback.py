@@ -300,20 +300,34 @@ async def test_a_success_after_a_non_terminal_failure_clears_its_reason(session,
 async def test_a_success_after_an_abandon_clears_the_reapers_reason(session, assignment):
     """A late success (past the horizon, or #496's reaper-first order) lands
     ``complete`` over ``abandoned``; ``no_fact_before_horizon`` must not survive
-    it (#541). ``closed_at`` keeps the reaper's stamp: stamped once and kept."""
+    it (#541). The path that leaves a ``detail`` behind: Replicator retries, then
+    goes quiet past the horizon, then succeeds. ``closed_at`` keeps the reaper's
+    stamp: stamped once and kept."""
     command = await _command(
         session,
         assignment,
         command_id="cmd-late",
         issued_at=datetime.now(UTC) - timedelta(hours=9),
     )
-    command.detail = "left by an earlier fact"
+    await apply_failure(
+        session,
+        command_id="cmd-late",
+        reason="provider_unavailable",
+        terminal=False,
+        attempts=3,
+        detail="503 from the provider",
+        occurred_at=OCCURRED_AT,
+    )
     assert await reap_open_commands(session, horizon=timedelta(hours=6)) == 1
-    assert command.state == STATE_ABANDONED
+    assert (command.state, command.reason) == (STATE_ABANDONED, "no_fact_before_horizon")
+    assert command.detail == "503 from the provider"
     reaped_at = command.closed_at
 
     await apply_success(
-        session, command_id="cmd-late", public_url=PUBLIC_URL, occurred_at=OCCURRED_AT
+        session,
+        command_id="cmd-late",
+        public_url=PUBLIC_URL,
+        occurred_at=OCCURRED_AT + timedelta(hours=7),
     )
 
     assert command.state == STATE_COMPLETE
