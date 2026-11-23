@@ -336,6 +336,29 @@ async def test_a_success_after_an_abandon_clears_the_reapers_reason(session, ass
     assert command.closed_at == reaped_at
 
 
+@pytest.mark.asyncio
+async def test_the_success_log_names_the_state_and_reason_it_overwrote(session, assignment, caplog):
+    """Clearing ``reason`` erases the row's only trace of the abandon, and a
+    success past the horizon is the evidence for whether the horizon is sized
+    right. The journal keeps it (#541 CR 2)."""
+    await _command(
+        session,
+        assignment,
+        command_id="cmd-late",
+        issued_at=datetime.now(UTC) - timedelta(hours=9),
+    )
+    await reap_open_commands(session, horizon=timedelta(hours=6))
+
+    with caplog.at_level("INFO", logger="src.core.services.replication_writeback"):
+        await apply_success(
+            session, command_id="cmd-late", public_url=PUBLIC_URL, occurred_at=OCCURRED_AT
+        )
+
+    [record] = [r for r in caplog.records if r.getMessage() == "Replication complete"]
+    assert record.prior_state == STATE_ABANDONED
+    assert record.prior_reason == "no_fact_before_horizon"
+
+
 # --- the reaper (MUST-6) ---
 
 
