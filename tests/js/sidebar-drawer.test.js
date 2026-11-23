@@ -114,6 +114,42 @@ describe("leaving the drawer", function () {
         expect(isClosed()).toBe(true);
     });
 
+    it("the dismissing click is swallowed: the content under the tap never sees it", function () {
+        // No scrim, so the tap that closes the drawer lands on whatever control
+        // sits beside it - on a phone, a button or link the operator never aimed at.
+        const outside = el("#outside");
+        let reached = 0;
+        outside.addEventListener("click", function () { reached += 1; });
+        toggle().click();
+        const ev = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+        outside.dispatchEvent(ev);
+
+        expect(isClosed()).toBe(true);
+        expect(reached).toBe(0);
+        expect(ev.defaultPrevented).toBe(true);
+    });
+
+    it("a click with the drawer closed reaches its target untouched", function () {
+        const outside = el("#outside");
+        let reached = 0;
+        outside.addEventListener("click", function () { reached += 1; });
+        const ev = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+        outside.dispatchEvent(ev);
+
+        expect(reached).toBe(1);
+        expect(ev.defaultPrevented).toBe(false);
+    });
+
+    it("a click on a drawer link is not swallowed", function () {
+        const link = el(".sidebar__link");
+        let reached = 0;
+        link.addEventListener("click", function (e) { reached += 1; e.preventDefault(); });
+        toggle().click();
+        link.click();
+
+        expect(reached).toBe(1);
+    });
+
     it("a click inside the drawer, off a link, keeps it open", function () {
         toggle().click();
         el(".sidebar__section-label").click();
