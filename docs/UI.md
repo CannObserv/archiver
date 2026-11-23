@@ -130,7 +130,8 @@ render, then the send.
   cold, the send 3 ms at most, and templates run no lazy loads.
 - **In production**, a first detail render after a restart held its
   transaction for 1.4 s in all (#405). Dev doesn't reproduce that.
-- **Why it's accepted:** both figures are far below the 5 s lock timeout.
+- **Why it's accepted:** both figures are below the 5 s lock timeout, the warm
+  one by a factor of over 700.
   - A `scope="function"` session dependency would cut only the send.
   - Committing before render is a rule every route would have to follow, with
     nothing to enforce it.
