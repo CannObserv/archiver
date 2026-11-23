@@ -1342,10 +1342,50 @@ a.badge:hover { text-decoration: underline; }
 }
 
 /* ─── Theme toggle button ────────────────────────────────────────────────── */
-.theme-toggle {
+.theme-toggle,
+.sidebar-toggle {
   font-size: var(--font-size-lg);
   padding: var(--space-2);
   min-width: 44px;
+}
+
+/* ─── Narrow chrome: the sidebar as a drawer (archiver#400) ──────────────── */
+/* At 390 px the fixed 14rem sidebar left the content 166 px, and the topbar
+   pushed Sign out to x=545. Under 640 px the sidebar is an off-canvas drawer
+   behind `.sidebar-toggle` (sidebar-drawer.js keeps `aria-expanded` and
+   `[data-open]` in step), the content takes the width, and the email truncates.
+
+   CLOSED IS `visibility: hidden`, NOT JUST OFF-SCREEN: a translated-away drawer
+   is still in the Tab order and the accessibility tree. Unlike `hidden`/`inert`
+   it needs no JS to tell narrow from wide - the desktop sidebar outside this
+   query is untouched. Closing transitions it with the transform, so it stays
+   visible until the slide-out ends. Opening must NOT: a discrete `visibility`
+   transition reads `hidden` at its start, and Chromium refused the script's
+   focus() on the first link (measured on 8001). The reduced-motion rule
+   collapses what remains.
+
+   HERE, NOT BESIDE `.sidebar`: `.btn` sets `display: inline-flex` at equal
+   specificity, so the toggle's `display: none` must come after it. */
+.sidebar-toggle { display: none; }
+
+@media (max-width: 640px) {
+  .topbar { justify-content: flex-start; gap: var(--space-2); padding: 0 var(--space-3); }
+  .sidebar-toggle { display: inline-flex; }
+  .topbar__actions { margin-left: auto; min-width: 0; gap: var(--space-2); }
+  .topbar__user { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar {
+    z-index: 90;   /* over the content; under topbar 100, modals 200, toasts 1000 */
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform var(--transition-fast), visibility var(--transition-fast);
+  }
+  .sidebar[data-open] {
+    transform: none;
+    visibility: visible;
+    box-shadow: var(--shadow-lg);
+    transition: transform var(--transition-fast);
+  }
+  .main-content { margin-left: 0; max-width: none; padding: var(--space-4); }
 }
 
 /* ─── Error page (#178) ──────────────────────────────────────────────────── */

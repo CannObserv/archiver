@@ -1,4 +1,6 @@
-"""Dashboard foundation tests - index route, auth redirect, user upsert."""
+"""Dashboard foundation tests - index route, auth redirect, user upsert, shared chrome."""
+
+from html.parser import HTMLParser
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -260,3 +262,52 @@ async def test_sign_out_is_a_real_navigation_not_a_boosted_request(client):
     assert response.status_code == 200
     [form] = [line for line in response.text.splitlines() if 'action="/__exe.dev/logout"' in line]
     assert 'hx-boost="false"' in form
+
+
+class _ChromeAttrs(HTMLParser):
+    """Collect the attributes of the drawer toggle, the sidebar and the scripts."""
+
+    def __init__(self):
+        super().__init__()
+        self.toggles: list[dict] = []
+        self.sidebars: list[dict] = []
+        self.scripts: list[dict] = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if "data-sidebar-toggle" in a:
+            self.toggles.append({"tag": tag, **a})
+        if "sidebar" in (a.get("class") or "").split():
+            self.sidebars.append({"tag": tag, **a})
+        if tag == "script" and a.get("src"):
+            self.scripts.append(a)
+
+
+@pytest.mark.asyncio
+async def test_the_sidebar_drawer_toggle_is_wired_to_the_sidebar(client):
+    """#400: below 640 px the sidebar is a drawer behind a topbar toggle.
+
+    The toggle is a real ``<button>`` (keyboard and screen reader for free) whose
+    ``aria-controls`` names the sidebar, and every page renders it closed: a
+    boosted navigation swaps the body's innerHTML, so this server-rendered state
+    is what each page starts from. Its script is a deferred static file like the
+    rest of the list, which would otherwise drop it in silence (archiver#62).
+    """
+    response = await client.get(
+        "/dashboard/",
+        headers={"X-ExeDev-UserID": "ext-drawer", "X-ExeDev-Email": "drawer@example.com"},
+    )
+    assert response.status_code == 200
+    chrome = _ChromeAttrs()
+    chrome.feed(response.text)
+
+    [toggle] = chrome.toggles
+    [sidebar] = chrome.sidebars
+    assert toggle["tag"] == "button"
+    assert toggle.get("type") == "button"
+    assert toggle["aria-expanded"] == "false"
+    assert toggle["aria-controls"] == sidebar["id"]
+    assert toggle.get("aria-label")
+    assert "data-open" not in sidebar
+    [drawer_js] = [s for s in chrome.scripts if s["src"].endswith("/sidebar-drawer.js")]
+    assert "defer" in drawer_js
