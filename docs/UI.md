@@ -121,6 +121,25 @@ structural walk over every route's dependencies, and one test per wait that
 records `session.in_transaction()` at the moment of the wait. A new wait gets
 a test there.
 
+**Accepted residual: the last read stays open through render and send (#522).**
+The session closes only after the response is sent. Starlette renders inside
+`TemplateResponse(...)`, so a route's last read holds `ACCESS SHARE` through
+render, then the send.
+- **Measured on `archiver_dev`** with the heaviest page, InfoItem detail at 50
+  revisions: about 7 ms warm and 120 ms cold. Render is 5 ms warm and 90 ms
+  cold, the send 3 ms at most, and templates run no lazy loads.
+- **In production**, a first detail render after a restart held its
+  transaction for 1.4 s in all (#405). Dev doesn't reproduce that.
+- **Why it's accepted:** both figures are below the 5 s lock timeout, the warm
+  one by a factor of over 700.
+  - A `scope="function"` session dependency would cut only the send.
+  - Committing before render is a rule every route would have to follow, with
+    nothing to enforce it.
+  - If a function-scoped session is ever used, move every site to it at once.
+    FastAPI caches dependencies per scope, so a request that mixes scopes opens
+    two sessions.
+- **Revisit** if any page's render nears a second.
+
 ### Writes must be same-origin (#404)
 
 **The login cookie is the dashboard's only credential, and a cross-port page
