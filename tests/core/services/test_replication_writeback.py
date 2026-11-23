@@ -269,6 +269,59 @@ async def test_a_success_after_a_non_terminal_failure_still_completes(session, a
     assert command.closed_at is not None
 
 
+@pytest.mark.asyncio
+async def test_a_success_after_a_non_terminal_failure_clears_its_reason(session, assignment):
+    """The retry worked: the row must not read ``complete`` beside the failure
+    token that preceded it (#541). Same close as ``apply_persisted``."""
+    command = await _command(session, assignment, command_id="cmd-1")
+    await apply_failure(
+        session,
+        command_id="cmd-1",
+        reason="provider_unavailable",
+        terminal=False,
+        attempts=1,
+        detail="503 from the provider",
+        occurred_at=OCCURRED_AT,
+    )
+
+    await apply_success(
+        session,
+        command_id="cmd-1",
+        public_url=PUBLIC_URL,
+        occurred_at=OCCURRED_AT + timedelta(minutes=1),
+    )
+
+    assert command.state == STATE_COMPLETE
+    assert command.reason is None
+    assert command.detail is None
+
+
+@pytest.mark.asyncio
+async def test_a_success_after_an_abandon_clears_the_reapers_reason(session, assignment):
+    """A late success (past the horizon, or #496's reaper-first order) lands
+    ``complete`` over ``abandoned``; ``no_fact_before_horizon`` must not survive
+    it (#541). ``closed_at`` keeps the reaper's stamp: stamped once and kept."""
+    command = await _command(
+        session,
+        assignment,
+        command_id="cmd-late",
+        issued_at=datetime.now(UTC) - timedelta(hours=9),
+    )
+    command.detail = "left by an earlier fact"
+    assert await reap_open_commands(session, horizon=timedelta(hours=6)) == 1
+    assert command.state == STATE_ABANDONED
+    reaped_at = command.closed_at
+
+    await apply_success(
+        session, command_id="cmd-late", public_url=PUBLIC_URL, occurred_at=OCCURRED_AT
+    )
+
+    assert command.state == STATE_COMPLETE
+    assert command.reason is None
+    assert command.detail is None
+    assert command.closed_at == reaped_at
+
+
 # --- the reaper (MUST-6) ---
 
 
