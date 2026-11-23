@@ -129,6 +129,38 @@ describe("leaving the drawer", function () {
         expect(ev.defaultPrevented).toBe(true);
     });
 
+    it("a real tap - mousedown, focus, then click - is swallowed too", function () {
+        // The order a browser fires: mousedown's default action moves focus,
+        // which would close the drawer through focusin BEFORE the click, so the
+        // click handler alone saw a closed drawer and let the tap through
+        // (Chromium on 8001: New Item navigated).
+        const target = el("#outside-input");
+        let reached = 0;
+        target.addEventListener("click", function () { reached += 1; });
+        toggle().click();
+        const down = new window.MouseEvent("mousedown", { bubbles: true, cancelable: true });
+        target.dispatchEvent(down);
+        if (!down.defaultPrevented) { target.focus(); }   // the browser's default action
+        target.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+
+        expect(down.defaultPrevented).toBe(true);
+        expect(isClosed()).toBe(true);
+        expect(reached).toBe(0);
+    });
+
+    it("a dismissing mousedown with no click (a drag) does not eat a later click", function () {
+        const target = el("#outside");
+        let reached = 0;
+        target.addEventListener("click", function () { reached += 1; });
+        toggle().click();
+        target.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        // The pointer was released elsewhere: no click. The next interaction is new.
+        target.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        target.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+
+        expect(reached).toBe(1);
+    });
+
     it("a click with the drawer closed reaches its target untouched", function () {
         const outside = el("#outside");
         let reached = 0;
