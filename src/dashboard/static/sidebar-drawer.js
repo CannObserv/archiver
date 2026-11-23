@@ -60,23 +60,58 @@
         if (returnFocus) { p.toggle.focus(); }
     }
 
+    /**
+     * True when the target is outside the open drawer and its toggle.
+     * @param {{toggle: HTMLElement, drawer: HTMLElement}|null} p
+     * @param {Node} target
+     * @returns {boolean}
+     */
+    function outsideOpen(p, target) {
+        return Boolean(p) && isOpen(p) && !p.drawer.contains(target) && !p.toggle.contains(target);
+    }
+
+    // A tap outside the open drawer only dismisses it. There is no scrim, so
+    // without this the same tap would also act on the control under it - on a
+    // phone, a button or link beside the drawer the operator never aimed at.
+    //
+    // It takes mousedown AND click, both in the capture phase. mousedown's
+    // default action moves focus, and focusin (below) would close the drawer
+    // before the click arrived, so a click handler alone saw a closed drawer
+    // and let the tap through (Chromium on 8001). Cancelling mousedown keeps
+    // focus put; the click it starts is then swallowed. Every mousedown and
+    // keydown resets the flag, so a drag that never clicks eats nothing later.
+    var swallowClick = false;
+
+    document.addEventListener("mousedown", function (ev) {
+        var p = parts();
+        swallowClick = outsideOpen(p, /** @type {Node} */ (ev.target));
+        if (!swallowClick) { return; }
+        ev.preventDefault();
+        closeDrawer(p, false);
+    }, true);
+
     document.addEventListener("click", function (ev) {
         var p = parts();
         var target = /** @type {Node} */ (ev.target);
-        if (!p) { return; }
-        if (p.toggle.contains(target)) {
+        if (swallowClick || outsideOpen(p, target)) {
+            swallowClick = false;
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (p) { closeDrawer(p, false); }
+            return;
+        }
+        if (p && p.toggle.contains(target)) {
             if (isOpen(p)) {
                 closeDrawer(p, false);
             } else {
                 openDrawer(p);
             }
-            return;
         }
-        if (isOpen(p) && !p.drawer.contains(target)) { closeDrawer(p, false); }
-    });
+    }, true);
 
     document.addEventListener("keydown", function (ev) {
         var p;
+        swallowClick = false;
         if (ev.key !== "Escape") { return; }
         p = parts();
         if (!p || !isOpen(p)) { return; }

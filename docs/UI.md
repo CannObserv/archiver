@@ -253,7 +253,8 @@ hides `.sidebar` off-canvas and shows the topbar's `[data-sidebar-toggle]`, a
 toggle's `aria-expanded` and the drawer's `data-open` in step. Opening moves
 focus to the first link. Escape closes and returns focus to the toggle; a click
 outside, or focus moving anywhere but the drawer or toggle, closes it without
-moving focus. Closed, the drawer is `visibility: hidden`, so its links are out
+moving focus. That click is swallowed (capture phase), so the dismissing tap
+never acts on the control under it - there is no scrim. Closed, the drawer is `visibility: hidden`, so its links are out
 of the Tab order ([STYLE.md](STYLE.md) § Layout). State lives only on the toggle
 and drawer, never on `<body>`, so a boosted navigation lands on the server's
 closed render. Wider than 640 px the toggle is `display: none` and `data-open`
