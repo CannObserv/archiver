@@ -96,6 +96,9 @@ async def apply_success(
     Idempotent by construction: every write is an assignment of the same values,
     so a redelivery — or T4's deliberate re-emission — lands on the same state.
     ``closed_at`` is stamped once and kept, so a repeat does not move the clock.
+    ``reason`` and ``detail`` are cleared, as ``apply_persisted`` does: a success
+    after a non-terminal failure or the reaper's abandon must not read
+    ``complete`` beside the token that preceded it (#541).
 
     Does not commit; the caller owns the transaction (ack-after-commit).
 
@@ -106,10 +109,15 @@ async def apply_success(
     if _is_stale(command, occurred_at, command_id=command_id):
         return command
     command.last_fact_at = occurred_at
+    # Logged below: the clear erases the row's only trace of an abandon or a
+    # retry, and a success past the horizon is how the horizon gets judged.
+    prior_state, prior_reason = command.state, command.reason
 
     command.public_url = public_url
     command.state = STATE_COMPLETE
     command.terminal = True
+    command.reason = None
+    command.detail = None
     if command.closed_at is None:
         command.closed_at = datetime.now(UTC)
 
@@ -138,6 +146,8 @@ async def apply_success(
             "source_revision_id": str(command.source_revision_id),
             "public_url": public_url,
             "occurred_at": occurred_at.isoformat(),
+            "prior_state": prior_state,
+            "prior_reason": prior_reason,
         },
     )
     return command
