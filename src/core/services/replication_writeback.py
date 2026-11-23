@@ -109,6 +109,9 @@ async def apply_success(
     if _is_stale(command, occurred_at, command_id=command_id):
         return command
     command.last_fact_at = occurred_at
+    # Logged below: the clear erases the row's only trace of an abandon or a
+    # retry, and a success past the horizon is how the horizon gets judged.
+    prior_state, prior_reason = command.state, command.reason
 
     command.public_url = public_url
     command.state = STATE_COMPLETE
@@ -143,6 +146,8 @@ async def apply_success(
             "source_revision_id": str(command.source_revision_id),
             "public_url": public_url,
             "occurred_at": occurred_at.isoformat(),
+            "prior_state": prior_state,
+            "prior_reason": prior_reason,
         },
     )
     return command
