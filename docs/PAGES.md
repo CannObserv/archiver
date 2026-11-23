@@ -14,7 +14,8 @@ transaction rule (UI.md § No transaction across an outbound wait).
 
 Every page shares `base.html`'s topbar. Its Sign out posts to `/__exe.dev/logout`
 with `hx-boost="false"`, because the proxy answers that path itself
-([HTMX.md](HTMX.md) § Boosted navigation).
+([HTMX.md](HTMX.md) § Boosted navigation). Under 640 px its menu button opens the
+sidebar as a drawer ([UI.md](UI.md) § `sidebar-drawer.js`).
 
 > **AGENTS.md enforcement:** update this file in the same commit as any Jinja2
 > template change or new/changed dashboard route.

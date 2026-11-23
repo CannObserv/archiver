@@ -12,6 +12,7 @@
   <script src="{{ request.url_for('dashboard-static', path='vendor/htmx-ext-response-targets.min.js') }}" defer></script>
   <script src="{{ request.url_for('dashboard-static', path='main.js') }}" defer></script>
   <script src="{{ request.url_for('dashboard-static', path='flash.js') }}" defer></script>
+  <script src="{{ request.url_for('dashboard-static', path='sidebar-drawer.js') }}" defer></script>
   {# htmx refuses to swap a non-2xx response; without this listener every failed
      request - partial or boosted - is silence. See docs/UI.md, archiver#178. #}
   <script src="{{ request.url_for('dashboard-static', path='htmx-errors.js') }}" defer></script>
@@ -32,6 +33,11 @@
   <div id="flash-region"></div>
 
   <header class="topbar" role="banner">
+    {# Under 640 px the sidebar is an off-canvas drawer and this opens it; wider,
+       it is display: none. Closed in every render: a boosted navigation swaps the
+       body's innerHTML, so each page starts from here (archiver#400, docs/UI.md). #}
+    <button type="button" class="btn btn--ghost sidebar-toggle" data-sidebar-toggle
+            aria-controls="sidebar" aria-expanded="false" aria-label="Menu">☰</button>
     <a href="/dashboard/" class="topbar__brand">Archiver</a>
     <nav class="topbar__actions" aria-label="User actions">
       <span class="topbar__user" aria-label="Signed in as {{ user.email }}">{{ user.email }}</span>
@@ -45,7 +51,7 @@
   </header>
 
   <div class="admin-layout">
-    <nav class="sidebar" aria-label="Main navigation">
+    <nav id="sidebar" class="sidebar" aria-label="Main navigation">
       <ul class="sidebar__nav" role="list">
         <li>
           <a href="/dashboard/" class="sidebar__link{% if request.url.path == '/dashboard/' %} sidebar__link--active{% endif %}"

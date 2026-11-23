@@ -67,8 +67,8 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 ### Layout
 - `.admin-layout` - flex wrapper; use inside `<body>` with `padding-top: var(--topbar-height)`.
 - `.topbar` - fixed top bar; contains `.topbar__brand` and `.topbar__actions`.
-- `.sidebar` - fixed left sidebar; contains `.sidebar__nav`, `.sidebar__link`, `.sidebar__section-label`.
-- `.main-content` - right content area with `margin-left: var(--sidebar-width)`.
+- `.sidebar` (`#sidebar`) - fixed left sidebar; contains `.sidebar__nav`, `.sidebar__link`, `.sidebar__section-label`. Under 640 px a drawer behind `.sidebar-toggle`: closed is `visibility: hidden` (untabbable), `[data-open]` shows it ([UI.md](UI.md) § `sidebar-drawer.js`).
+- `.main-content` - right content area with `margin-left: var(--sidebar-width)`; none under 640 px.
 
 ### Buttons
 - `.btn` - base; always pair with a modifier.
@@ -192,7 +192,7 @@ Target: **WCAG 2.1 AA**.
 - Async content sections (HTMX async partial pattern): `aria-live="polite" aria-atomic="false"`.
 - Inline form error targets (HTMX inline form error pattern): `aria-live="polite" aria-atomic="true"`.
 - Toast announcers (archiver#73): `#flash-announcer-assertive` (errors) / `#flash-announcer-polite` (other levels), both `.sr-only`. `flash.js` writes every message here so announcement is decoupled from the visible `#flash-region` cap; visible toasts carry no live role.
-- Active sidebar link: `aria-current="page"`.
+- Active sidebar link: `aria-current="page"`. Drawer toggle: `aria-expanded` + `aria-controls`; Escape returns focus to it.
 - Focus rings: `:focus-visible` with 2 px brand-colour outline.
 - Minimum touch targets: 44 × 44 px.
 - Skip link: `.skip-link` at top of every page.

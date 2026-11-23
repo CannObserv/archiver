@@ -245,6 +245,20 @@ Colour-scheme toggle (`[data-theme-toggle]`), persisting the choice in
 `localStorage` under `co-color-scheme`. `base.html` re-reads that key in a
 blocking inline script before the stylesheet paints, to prevent FOUC.
 
+### `sidebar-drawer.js`
+
+The phone-width sidebar drawer (archiver#400). Under 640 px `dashboard.css`
+hides `.sidebar` off-canvas and shows the topbar's `[data-sidebar-toggle]`, a
+`<button>` whose `aria-controls` names `#sidebar`; this script keeps the
+toggle's `aria-expanded` and the drawer's `data-open` in step. Opening moves
+focus to the first link. Escape closes and returns focus to the toggle; a click
+outside, or focus moving anywhere but the drawer or toggle, closes it without
+moving focus. Closed, the drawer is `visibility: hidden`, so its links are out
+of the Tab order ([STYLE.md](STYLE.md) § Layout). State lives only on the toggle
+and drawer, never on `<body>`, so a boosted navigation lands on the server's
+closed render. Wider than 640 px the toggle is `display: none` and `data-open`
+is ignored.
+
 ### `htmx-errors.js`
 
 Makes failed htmx requests visible (archiver#178). htmx refuses to swap a
