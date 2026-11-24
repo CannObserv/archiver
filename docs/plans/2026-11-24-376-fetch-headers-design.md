@@ -338,6 +338,9 @@ The build also changes these living docs, and none of them changes now:
 
 ## Open questions
 
-None block the design. The build decides two things:
+None block the design. The build decides three things:
+- how populating the fields is gated on Watcher's support (D7). The build normally lands
+  after that support is announced, which needs no gate. If it lands first, a unit-only flag
+  is the `ARCHIVER_FETCH_POLICY_PRODUCER` precedent;
 - whether the API's UA acknowledgement is a request field or a separate confirm route;
 - whether the effective-headers view is on the source page, the Domain page, or both.
