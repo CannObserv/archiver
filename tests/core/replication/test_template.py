@@ -138,7 +138,7 @@ def test_the_retired_date_key_is_refused_naming_the_vocabulary():
     message = errors[0]["message"]
     assert message.startswith("source_revision.date is not a value the renderer supplies")
     assert "'date_label'" in message
-    assert "'date'," not in message
+    assert "'date'" not in message
 
 
 def test_occasion_key_needs_no_required_fields_entry():
