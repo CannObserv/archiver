@@ -519,7 +519,11 @@ def main(argv: list[str] | None = None, *, environ: Mapping[str, str] = os.envir
             key = args.object or latest_key(client, bucket, args.prefix)
             fetched = fetch(client, bucket, key, args.download_only, runner=subprocess.run)
             print(f"verified: {fetched.path}")
-            print("archive:", *_fields(vars(fetched.toc), ("pg_dump_version", "server_version")))
+            header = {
+                "pg_dump_version": fetched.toc.pg_dump_version,
+                "server_version": fetched.toc.server_version,
+            }
+            print("archive:", *_fields(header, tuple(header)))
             return 0
         assert_empty(args.into, run_as=args.run_as, runner=subprocess.run)
         # Before the fetch: a client newer than the target fails in seconds,
