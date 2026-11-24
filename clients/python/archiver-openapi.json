@@ -240,10 +240,17 @@
         "description": "One entry of a dead-letter queue, described for triage.",
         "properties": {
           "dead_lettered_at": {
-            "description": "When the entry was dead-lettered, from its stream id. On an entry with no provenance, the way back to the journald line that says why.",
-            "format": "date-time",
-            "title": "Dead Lettered At",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the entry was dead-lettered, from its stream id. On an entry with no provenance, the way back to the journald line that says why. Null when the id's millisecond half is past year 9999 (archiver#401); `entry_id` is the way back then.",
+            "title": "Dead Lettered At"
           },
           "decode_error": {
             "anyOf": [
@@ -3393,7 +3400,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.47.0"
+    "version": "4.48.0"
   },
   "openapi": "3.1.0",
   "paths": {

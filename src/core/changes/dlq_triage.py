@@ -43,7 +43,7 @@ from __future__ import annotations
 import re
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
 from co_core.pure.adapters.bus.dead_letter import DeadLetterProvenance, split_dead_letter
@@ -98,6 +98,11 @@ STREAM_ID_PATTERN = r"^[0-9]+-[0-9]+$"
 ``is_exact_stream_id`` is the whole rule."""
 _STREAM_ID = re.compile(STREAM_ID_PATTERN)
 _UINT64_MAX = 2**64 - 1
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+_MAX_ENTRY_MILLIS = 253_402_300_799_999
+"""9999-12-31T23:59:59.999Z, the last stream-id millisecond ``datetime`` can hold.
+Integer arithmetic from ``_EPOCH``, not ``fromtimestamp``: a float of this size
+drifts the millisecond (…59.998993)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,14 +213,16 @@ class DeadLetter:
     (cannobserv#474): the original id, the group and consumer that parked it,
     and why. Every field is ``None`` on an entry written before that, where
     ``dead_lettered_at`` (from the entry id) is still the way back to the
-    journald line. ``parked_as`` reads the reason's prefix; ``owned`` is whether
-    archiver's own group for this queue's topic parked it - a fact stream's DLQ
-    is shared by every consuming service's group, and only owned entries are
-    archiver's handlers' to reprocess.
+    journald line. It is ``None`` when the id's millisecond half is past year
+    9999 (``_entry_time``); ``entry_id`` itself is the way back then.
+    ``parked_as`` reads the reason's prefix; ``owned`` is whether archiver's
+    own group for this queue's topic parked it - a fact stream's DLQ is shared
+    by every consuming service's group, and only owned entries are archiver's
+    handlers' to reprocess.
     """
 
     entry_id: str
-    dead_lettered_at: datetime
+    dead_lettered_at: datetime | None
     fields: dict[str, str]
     event_type: str | None
     decodes: bool
@@ -272,10 +279,19 @@ def _text(value: bytes | str) -> str:
     return value.decode(errors="backslashreplace") if isinstance(value, bytes) else value
 
 
-def _entry_time(entry_id: str) -> datetime:
-    """The millisecond timestamp half of a stream id, as UTC."""
+def _entry_time(entry_id: str) -> datetime | None:
+    """The millisecond timestamp half of a stream id, as UTC; ``None`` past year 9999.
+
+    Redis takes any uint64 there (``is_exact_stream_id``), and ``datetime`` stops
+    at 9999 (archiver#401). Such an id comes from a client that ``XADD``s an
+    explicit far-future id, or a broker clock that far ahead. Every later ``*``
+    id on that stream is past 9999 too, because an auto id must exceed the last
+    one, and ``XDEL`` does not lower it: resetting it (``XSETID``) is broker's.
+    """
     millis = int(entry_id.split("-", 1)[0])
-    return datetime.fromtimestamp(millis / 1000, tz=UTC)
+    if millis > _MAX_ENTRY_MILLIS:
+        return None
+    return _EPOCH + timedelta(milliseconds=millis)
 
 
 def _parked_as(reason: str | None) -> ParkedAs | None:
@@ -380,7 +396,6 @@ async def discard_dead_letters(client: Redis, dlq: str, entry_ids: Iterable[str]
             extra={
                 "dlq": dlq,
                 "entry_id": entry_id,
-                "dead_lettered_at": _entry_time(entry_id).isoformat(),
                 "fields": {_text(k): _text(v) for k, v in raw_fields.items()},
             },
         )
@@ -497,7 +512,6 @@ async def reprocess_dead_letters(
                 "dlq": dlq,
                 "entry_id": entry_id,
                 "source_id": provenance.source_id,
-                "dead_lettered_at": _entry_time(entry_id).isoformat(),
                 "fields": fields,
             },
         )

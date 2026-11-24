@@ -36,7 +36,9 @@ the core triage modules directly, with no API route between.
   `REARMABLE_TOPICS` holds the topic (else a disabled button titled why).
   **POST `.../outbox/{row_id}/discard`** - `hx-confirm` naming the row and topic.
 - **GET `/dashboard/bus-triage/dlq/{dlq}`** - `dlq_triage.list_dead_letters`, oldest
-  first: entry id and time; the parking group with an "archiver" / "not archiver" badge,
+  first: entry id and time ("time past year 9999" where the id's millisecond half is
+  beyond what `datetime` holds, #401; such a queue sticks, BUS_CONSUMERS.md § DLQ
+  triage); the parking group with an "archiver" / "not archiver" badge,
   or "no provenance"; `parked_as`, `source_id`, `reason`; `event_type` with a "decodes" /
   "does not decode" badge and `decode_error`; the fields in a `<details>`. A "parked twice"
   badge on entries sharing `(provenance.group, provenance.source_id)` on the page. The read

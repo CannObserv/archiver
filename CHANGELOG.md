@@ -18,6 +18,16 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.48.0 (2026-11-24)
+
+[both] **A DLQ entry id past year 9999 no longer breaks listing or discard** (archiver#401). No migration. SDK 5.19.0.
+
+- **`DeadLetterOut.dead_lettered_at` is `datetime | null`** on `GET /tools/dead-letters/{dlq}`. Still required; null when the entry id's millisecond half is past 9999-12-31T23:59:59.999Z, which Redis accepts and `datetime` cannot hold. The `entry_id` is the way back to the journald line then. One such entry used to 500 the whole listing, and the Bus triage screen with it.
+- **Discard and reprocess settle such an entry.** Both computed the time for their log line before the `XDEL`, so the entry could not be removed through archiver. `Discarding dead letter` and `Reprocessed dead letter` no longer carry `dead_lettered_at`: their `entry_id` holds it.
+- **The queue sticks.** An auto id must exceed the stream's last id, and `XDEL` does not lower it, so every later dead letter on that queue is past 9999 too. Each lists with a null time and discards normally. Resetting the last id (`XSETID`) is broker's operation, not archiver's ([BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md)).
+- **SDK 5.19.0:** the generated `DeadLetterOut.dead_lettered_at` is `datetime.datetime | None`. A typed caller now needs a None check. No method changes. A 5.18 SDK parses a listing with no such entry as before; on one with, it raises a `TypeError` where the server used to 500.
+- Also in this release, with no contract path: the Bus triage screen shows "time past year 9999" for such an entry.
+
 ## v4.47.0 (2026-11-18)
 
 [service] **The authoring tools refuse a non-2xx fetch** (archiver#473). No migration. SDK unchanged (5.18.0): the regenerated client moves docstrings only (#473, #528); no type, method or status model changed.

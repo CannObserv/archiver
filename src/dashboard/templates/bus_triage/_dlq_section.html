@@ -43,7 +43,7 @@
         <tr data-entry-id="{{ e.entry_id }}">
           <td class="data-table__cell">
             <code class="text-sm" style="white-space:nowrap;">{{ e.entry_id }}</code>
-            <div class="text-xs text-muted">{{ e.dead_lettered_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}</div>
+            <div class="text-xs text-muted">{{ e.dead_lettered_at.strftime('%Y-%m-%dT%H:%M:%SZ') if e.dead_lettered_at else 'time past year 9999' }}</div>
             {% if e.entry_id in section.duplicates %}
             <span class="badge badge--info badge--sm"
                   title="Another entry has the same group and source_id: one frame, parked twice. Count it once.">parked twice</span>

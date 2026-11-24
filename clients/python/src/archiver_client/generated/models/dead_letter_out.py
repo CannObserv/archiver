@@ -23,8 +23,9 @@ class DeadLetterOut:
     """One entry of a dead-letter queue, described for triage.
 
     Attributes:
-        dead_lettered_at (datetime.datetime): When the entry was dead-lettered, from its stream id. On an entry with no
-            provenance, the way back to the journald line that says why.
+        dead_lettered_at (datetime.datetime | None): When the entry was dead-lettered, from its stream id. On an entry
+            with no provenance, the way back to the journald line that says why. Null when the id's millisecond half is past
+            year 9999 (archiver#401); `entry_id` is the way back then.
         decode_error (None | str): Why it does not decode; null when it does.
         decodes (bool): Whether the frame decodes against the running co-core. True on an entry that failed to decode
             when it was parked is the version-skew case.
@@ -43,7 +44,7 @@ class DeadLetterOut:
             Every field is null on an entry written before that.
     """
 
-    dead_lettered_at: datetime.datetime
+    dead_lettered_at: datetime.datetime | None
     decode_error: None | str
     decodes: bool
     entry_id: str
@@ -55,7 +56,11 @@ class DeadLetterOut:
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        dead_lettered_at = self.dead_lettered_at.isoformat()
+        dead_lettered_at: None | str
+        if isinstance(self.dead_lettered_at, datetime.datetime):
+            dead_lettered_at = self.dead_lettered_at.isoformat()
+        else:
+            dead_lettered_at = self.dead_lettered_at
 
         decode_error: None | str
         decode_error = self.decode_error
@@ -103,7 +108,21 @@ class DeadLetterOut:
         from ..models.dead_letter_provenance_out import DeadLetterProvenanceOut
 
         d = dict(src_dict)
-        dead_lettered_at = isoparse(d.pop("dead_lettered_at"))
+
+        def _parse_dead_lettered_at(data: object) -> datetime.datetime | None:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                dead_lettered_at_type_0 = isoparse(data)
+
+                return dead_lettered_at_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(datetime.datetime | None, data)
+
+        dead_lettered_at = _parse_dead_lettered_at(d.pop("dead_lettered_at"))
 
         def _parse_decode_error(data: object) -> None | str:
             if data is None:

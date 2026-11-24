@@ -291,6 +291,14 @@ screen - and they are not verification the 8001 rule covers.
   `dead_lettered_at` (taken from the entry id) is the way back to the journald
   line (`Quarantining unusable message` / `Dead-lettering undecodable frame`),
   while retention lasts.
+- **An id past year 9999 has no time, and sticks to its queue** (#401). Redis
+  takes any uint64 millisecond half; `datetime` stops at 9999-12-31, so such an
+  entry lists with `dead_lettered_at` null, and its `entry_id` is the way back.
+  It discards and reprocesses like any other. One got there through a client
+  `XADD`ing an explicit far-future id, or a broker clock that far ahead. An auto
+  id must exceed the stream's last id and `XDEL` does not lower it, so every
+  later dead letter on that queue is past 9999 too. Clearing that is an
+  `XSETID` on the queue: broker's operation, not archiver's. File it on broker.
 - **What the disposition is.** `handler_poison` (`InvalidFingerprintError`,
   `InvalidInfoSourceIdError` on revisions, `InvalidFactError` on watch-events) is deterministic producer data:
   discard it and file on the producer. `undecodable` with `decodes: true` is
