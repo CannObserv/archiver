@@ -9,6 +9,7 @@ import hashlib
 import logging
 import os
 import re
+import shlex
 import stat
 import subprocess
 from datetime import UTC, datetime, timedelta
@@ -17,13 +18,33 @@ import pytest
 from google.api_core.exceptions import Forbidden
 
 from src.core import restore
-from src.core.backup import BUCKET_ENV, KEY_TIME_FORMAT, PREFIX_ENV
+from src.core.backup import BUCKET_ENV, KEY_TIME_FORMAT, PREFIX_ENV, Toc
 from src.core.restore import RestoreError
 from tests.core.gcs_fakes import FakeBucket, FakeClient
-from tests.core.test_backup import DUMP_BYTES, FakePg
+from tests.core.test_backup import DUMP_BYTES, TOC, FakePg
 
 BUCKET = "co-gcs-archiver-backup"
 SRC = "co-registrar"
+
+#: What ``TOC``'s header says wrote it.
+HEADER_PG_DUMP = "16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)"
+
+
+def _toc(pg_dump_version: str | None) -> str:
+    """``TOC`` with its header naming another ``pg_dump``; None drops the line."""
+    line = f";     Dumped by pg_dump version: {HEADER_PG_DUMP}\n"
+    assert line in TOC
+    replacement = "" if pg_dump_version is None else line.replace(HEADER_PG_DUMP, pg_dump_version)
+    return TOC.replace(line, replacement)
+
+
+def _programs(calls: list[list[str]]) -> list[str]:
+    """Each call as its program and first argument: ``setpriv`` peeled off."""
+    out = []
+    for argv in calls:
+        command = argv[argv.index("--") + 1 :] if argv[0] == "setpriv" else argv
+        out.append(" ".join(command[:2]))
+    return out
 
 
 def _ship(
@@ -130,8 +151,16 @@ class TestFindingASnapshot:
 class TestFetch:
     def test_downloads_and_verifies(self, client, bucket, tmp_path) -> None:
         _ship(bucket, f"{SRC}/x.dump")
-        path = restore.fetch(client, BUCKET, f"{SRC}/x.dump", tmp_path / "d", runner=FakePg())
-        assert path.read_bytes() == DUMP_BYTES
+        fetched = restore.fetch(client, BUCKET, f"{SRC}/x.dump", tmp_path / "d", runner=FakePg())
+        assert fetched.path.read_bytes() == DUMP_BYTES
+
+    def test_returns_what_the_archives_own_header_says(self, client, bucket, tmp_path) -> None:
+        """The versions come from ``pg_restore --list`` on the downloaded bytes,
+        not from the object's metadata, which a re-upload could rewrite (#509)."""
+        _ship(bucket, f"{SRC}/x.dump", pg_dump_version="99.0 (metadata)")
+        fetched = restore.fetch(client, BUCKET, f"{SRC}/x.dump", tmp_path / "d", runner=FakePg())
+        assert fetched.toc.pg_dump_version == HEADER_PG_DUMP
+        assert fetched.toc.server_version == HEADER_PG_DUMP
 
     def test_a_download_that_does_not_match_its_recorded_digest_is_refused(
         self, client, bucket, tmp_path
@@ -177,7 +206,7 @@ class TestFetchIsPrivate:
     def test_the_directory_and_the_dump_are_private(self, client, bucket, tmp_path) -> None:
         _ship(bucket, f"{SRC}/x.dump")
         dest = tmp_path / "fetched"
-        path = restore.fetch(client, BUCKET, f"{SRC}/x.dump", dest, runner=FakePg())
+        path = restore.fetch(client, BUCKET, f"{SRC}/x.dump", dest, runner=FakePg()).path
         assert stat.S_IMODE(dest.stat().st_mode) == 0o700
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
@@ -289,6 +318,124 @@ class TestTheTarget:
         (call,) = pg.calls
         assert call[:2] == ["setpriv", "--reuid=postgres"]
         assert "--dbname=archiver" in call
+
+
+class TestPgMajor:
+    @pytest.mark.parametrize(
+        ("text", "major"),
+        [
+            (HEADER_PG_DUMP, 16),
+            ("pg_restore (PostgreSQL) 18.1 (Ubuntu 18.1-1)", 18),
+            ("pg_restore (PostgreSQL) 17beta2", 17),
+            ("9.6.24", 9),
+        ],
+    )
+    def test_the_first_number_of_any_tools_version(self, text, major) -> None:
+        assert restore.pg_major(text) == major
+
+    @pytest.mark.parametrize("text", [None, "", "unknown"])
+    def test_no_number_is_no_major(self, text) -> None:
+        assert restore.pg_major(text) is None
+
+
+class TestTargetMajor:
+    """The target's major, asked first and as the user that will load (#509)."""
+
+    def test_asks_the_server_as_the_restoring_user(self) -> None:
+        pg = FakePg(server_version_num="160015")
+        assert restore.target_major("archiver_restore_test", run_as="postgres", runner=pg) == 16
+        (call,) = pg.calls
+        assert call[:2] == ["setpriv", "--reuid=postgres"]
+        assert "--dbname=archiver_restore_test" in call
+        assert "--command=SHOW server_version_num" in call
+
+    def test_reads_a_newer_server(self) -> None:
+        pg = FakePg(server_version_num="180001")
+        assert restore.target_major("archiver_test", run_as=None, runner=pg) == 18
+
+    def test_a_server_that_cannot_be_asked_is_an_error(self) -> None:
+        with pytest.raises(RestoreError, match="server version.*psql: boom"):
+            restore.target_major("archiver_test", run_as=None, runner=FakePg(fail="psql"))
+
+    def test_an_answer_that_is_not_a_number_is_an_error(self) -> None:
+        with pytest.raises(RestoreError, match="'16.15'"):
+            restore.target_major(
+                "archiver_test", run_as=None, runner=FakePg(server_version_num="16.15")
+            )
+
+
+class TestClientMajor:
+    """The major of the ``pg_restore`` the load will run (#509)."""
+
+    def test_asks_the_loading_pg_restore_as_the_restoring_user(self) -> None:
+        pg = FakePg(pg_restore_version="pg_restore (PostgreSQL) 18.1 (Ubuntu 18.1-1)")
+        assert restore.client_major("archiver_restore_test", run_as="postgres", runner=pg) == 18
+        (call,) = pg.calls
+        assert call == restore.as_user(
+            ["pg_restore", "--version", "--dbname=archiver_restore_test"], "postgres"
+        )
+
+    def test_version_comes_first_and_the_loads_database_rides_along(self) -> None:
+        """pg_wrapper picks the binary from the arguments (``service=``) and the
+        environment, so the probe carries the load's ``--dbname`` and runs as
+        its user. ``--version`` must be ``argv[1]``: ``pg_restore`` answers it
+        only there, and rejects it after any other option (measured, 16.15)."""
+        pg = FakePg()
+        restore.client_major("service=archiver_restore", run_as=None, runner=pg)
+        (call,) = pg.calls
+        assert call[:2] == ["pg_restore", "--version"]
+        assert "--dbname=service=archiver_restore" in call
+
+    def test_a_pg_restore_that_will_not_run_is_an_error(self) -> None:
+        with pytest.raises(RestoreError, match="pg_restore --version.*boom"):
+            restore.client_major("archiver_test", run_as=None, runner=FakePg(fail="pg_restore"))
+
+    def test_an_answer_that_names_no_version_is_an_error(self) -> None:
+        with pytest.raises(RestoreError, match="no version"):
+            restore.client_major(
+                "archiver_test", run_as=None, runner=FakePg(pg_restore_version="pg_restore")
+            )
+
+
+class TestCheckClient:
+    """A newer ``pg_restore`` writes session ``SET``s an older server rejects,
+    partway through the load (#509, watcher#365)."""
+
+    @pytest.mark.parametrize(("client", "target"), [(15, 16), (16, 16), (16, 18)])
+    def test_an_older_or_equal_client_passes(self, client, target) -> None:
+        restore.check_client(client, target)
+
+    @pytest.mark.parametrize("client", [17, 18])
+    def test_a_newer_client_is_refused_naming_both_and_the_fix(self, client) -> None:
+        with pytest.raises(RestoreError) as caught:
+            restore.check_client(client, 16)
+        message = str(caught.value)
+        assert f"pg_restore {client}" in message
+        assert "PostgreSQL 16" in message
+        assert "postgresql-client-16" in message
+
+
+class TestCheckCompatible:
+    """The archive's own ``pg_dump`` major against the target's (#509)."""
+
+    @pytest.mark.parametrize("pg_dump_version", ["15.10 (Ubuntu 15.10-1)", HEADER_PG_DUMP, "16.0"])
+    def test_an_older_or_equal_archive_passes(self, pg_dump_version) -> None:
+        restore.check_compatible(Toc(pg_dump_version=pg_dump_version), 16)
+
+    def test_a_newer_archive_is_refused_naming_both_and_the_fix(self) -> None:
+        with pytest.raises(RestoreError) as caught:
+            restore.check_compatible(Toc(pg_dump_version="18.1 (Ubuntu 18.1-1)"), 16)
+        message = str(caught.value)
+        assert "pg_dump 18" in message
+        assert "PostgreSQL 16" in message
+        assert "PostgreSQL 18 or newer" in message
+
+    @pytest.mark.parametrize("pg_dump_version", [None, "", "unknown"])
+    def test_an_archive_naming_no_readable_version_is_refused(self, pg_dump_version) -> None:
+        """Every custom-format header carries it, so its absence says the file
+        is not what it claims."""
+        with pytest.raises(RestoreError, match="no pg_dump version"):
+            restore.check_compatible(Toc(pg_dump_version=pg_dump_version), 16)
 
 
 class TestRestoreInto:
@@ -431,6 +578,129 @@ class TestMain:
         argv = ["--latest", "--prefix", SRC, "--download-only", str(tmp_path / "d")]
         assert restore.main([*argv, "--allow-production"]) == 2
         assert "--allow-production" in capsys.readouterr().err
+
+    def test_the_checks_run_in_order_and_the_load_comes_last(self, pg, bucket) -> None:
+        """Target and client before the fetch (seconds, not a download); the
+        archive's header after ``verify_dump``; the load only then (#509)."""
+        _ship(bucket, f"{SRC}/20261013T031702Z.dump")
+        code = restore.main(["--latest", "--prefix", SRC, "--into", "archiver_restore_test"])
+        assert code == 0
+        assert _programs(pg.calls) == [
+            "psql --no-password",
+            "psql --no-password",
+            "pg_restore --version",
+            "pg_restore --list",
+            "pg_restore --file=/dev/null",
+            "pg_restore --no-password",
+        ]
+        assert "--command=SHOW server_version_num" in pg.calls[1]
+
+    def test_the_probes_run_as_the_restoring_user(self, pg, bucket) -> None:
+        _ship(bucket, f"{SRC}/20261013T031702Z.dump")
+        argv = ["--latest", "--prefix", SRC, "--into", "archiver_restore_test"]
+        assert restore.main([*argv, "--run-as", "postgres"]) == 0
+        probes = [c for c in pg.calls if "--version" in c or any("server_version" in a for a in c)]
+        assert len(probes) == 2
+        assert all(c[:2] == ["setpriv", "--reuid=postgres"] for c in probes)
+
+    def test_a_newer_client_is_refused_before_anything_is_fetched(
+        self, pg, bucket, client, monkeypatch, capsys
+    ) -> None:
+        _ship(bucket, f"{SRC}/20261013T031702Z.dump")
+        monkeypatch.setattr(
+            restore.subprocess,
+            "run",
+            newer := FakePg(pg_restore_version="pg_restore (PostgreSQL) 18.1 (Ubuntu 18.1-1)"),
+        )
+        monkeypatch.setattr(FakeBucket, "get_blob", _raiser(AssertionError("fetched")))
+        code = restore.main(["--latest", "--prefix", SRC, "--into", "archiver_restore_test"])
+        assert code == 1
+        err = capsys.readouterr().err
+        assert "pg_restore 18" in err and "PostgreSQL 16" in err
+        assert "postgresql-client-16" in err
+        assert "fetched" not in err, "the tripwire fired: the dump was fetched"
+        assert _programs(newer.calls)[-1] == "pg_restore --version"
+
+    def test_an_older_client_into_a_newer_server_restores(self, pg, bucket, monkeypatch) -> None:
+        """The supported direction: older into newer proceeds as before."""
+        _ship(bucket, f"{SRC}/20261013T031702Z.dump")
+        monkeypatch.setattr(
+            restore.subprocess, "run", newer_server := FakePg(server_version_num="180001")
+        )
+        code = restore.main(["--latest", "--prefix", SRC, "--into", "archiver_restore_test"])
+        assert code == 0
+        assert [c for c in newer_server.calls if "--single-transaction" in c]
+
+    def test_a_newer_archive_is_refused_before_the_load(
+        self, pg, bucket, monkeypatch, capsys
+    ) -> None:
+        _ship(bucket, f"{SRC}/20261013T031702Z.dump")
+        monkeypatch.setattr(
+            restore.subprocess, "run", newer := FakePg(toc=_toc("18.1 (Ubuntu 18.1-1)"))
+        )
+        code = restore.main(["--latest", "--prefix", SRC, "--into", "archiver_restore_test"])
+        assert code == 1
+        err = capsys.readouterr().err
+        assert "pg_dump 18" in err and "PostgreSQL 16" in err
+        assert not [c for c in newer.calls if "--single-transaction" in c]
+
+    def test_an_archive_naming_no_pg_dump_is_refused_before_the_load(
+        self, pg, bucket, monkeypatch, capsys
+    ) -> None:
+        _ship(bucket, f"{SRC}/20261013T031702Z.dump")
+        monkeypatch.setattr(restore.subprocess, "run", absent := FakePg(toc=_toc(None)))
+        code = restore.main(["--latest", "--prefix", SRC, "--into", "archiver_restore_test"])
+        assert code == 1
+        assert "no pg_dump version" in capsys.readouterr().err
+        assert not [c for c in absent.calls if "--single-transaction" in c]
+
+    @pytest.mark.parametrize(
+        ("metadata", "header", "code"),
+        [
+            # A re-uploaded object claiming 16 over an 18 archive: still refused.
+            (HEADER_PG_DUMP, "18.1 (Ubuntu 18.1-1)", 1),
+            # Metadata claiming 18 over a 16 archive: the header says it loads.
+            ("18.1 (Ubuntu 18.1-1)", HEADER_PG_DUMP, 0),
+        ],
+    )
+    def test_the_archives_header_decides_never_the_objects_metadata(
+        self, pg, bucket, monkeypatch, metadata, header, code
+    ) -> None:
+        _ship(bucket, f"{SRC}/20261013T031702Z.dump", pg_dump_version=metadata)
+        monkeypatch.setattr(restore.subprocess, "run", FakePg(toc=_toc(header)))
+        assert (
+            restore.main(["--latest", "--prefix", SRC, "--into", "archiver_restore_test"]) == code
+        )
+
+    def test_download_only_names_the_archives_versions_and_asks_no_target(
+        self, pg, bucket, tmp_path, capsys
+    ) -> None:
+        _ship(bucket, f"{SRC}/20261013T031702Z.dump")
+        argv = ["--latest", "--prefix", SRC, "--download-only", str(tmp_path / "d")]
+        assert restore.main(argv) == 0
+        out = capsys.readouterr().out.splitlines()
+        (archive,) = [line for line in out if line.startswith("archive:")]
+        assert shlex.split(archive)[1:] == [
+            f"pg_dump_version={HEADER_PG_DUMP}",
+            f"server_version={HEADER_PG_DUMP}",
+        ]
+        assert "psql" not in [c[0] for c in pg.calls]
+
+    def test_list_shows_both_versions_quoted(self, pg, bucket, capsys) -> None:
+        """The values hold spaces: each is shell-quoted, so the line splits back
+        into its fields (#509)."""
+        _ship(
+            bucket,
+            f"{SRC}/20261013T031702Z.dump",
+            pg_dump_version=HEADER_PG_DUMP,
+            server_version="16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)",
+        )
+        assert restore.main(["--list", "--prefix", SRC]) == 0
+        (line,) = capsys.readouterr().out.splitlines()
+        fields = dict(word.split("=", 1) for word in shlex.split(line)[1:])
+        assert fields["pg_dump_version"] == HEADER_PG_DUMP
+        assert fields["server_version"] == "16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)"
+        assert fields["alembic_head"] == ""
 
     def test_a_populated_target_is_refused_before_anything_is_fetched(
         self, pg, bucket, monkeypatch, capsys

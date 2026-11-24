@@ -163,6 +163,23 @@ $R --latest --prefix co-registrar --download-only /root/archiver-restore   # fet
 `--allow-production` is given, and any database that already holds a schema or a relation,
 whatever the flag: never `--clean`, one transaction, so a failure leaves it empty.
 
+**Nothing newer than the target loads into it** (#509). Before the fetch, `--into` asks the
+target `SHOW server_version_num` and the loading `pg_restore --version` (as `--run-as`, with
+the load's `--dbname`). After it, `--into` reads the archive's own header for its `pg_dump`
+major, never the object's metadata. Same or older proceeds. Otherwise the restore fails
+before anything loads, naming both majors:
+
+| Refusal | Fix |
+|---|---|
+| `the local pg_restore N is newer than the target's PostgreSQL M` | load with `postgresql-client-M`'s `pg_restore`, or into an N-or-newer server. Ubuntu's pg_wrapper runs the local cluster's major (the one on 5432), else the newest installed, so this happens on a host with no local cluster or a newer one. Without the check, it fails partway on `SET transaction_timeout`. |
+| `the archive was written by pg_dump N … newer than the target's PostgreSQL M` | restore into an N-or-newer server |
+| `the archive names no pg_dump version` | not a dump the backup wrote: take another |
+
+A local `pg_restore` *older* than the archive is not checked here. When the archive format
+moved in that major, the fetch's verify already refuses it (`unsupported version … in file
+header`). `--list` shows each dump's `pg_dump_version` and `server_version`,
+and `--download-only` prints the archive's own.
+
 **The drill** (and acceptance check 6): into a scratch database, compared with production.
 
 ```bash

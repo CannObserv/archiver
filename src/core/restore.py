@@ -19,6 +19,15 @@ tables' owner (``archiver``) and the read role's column grants (#348). It cannot
 carry the roles themselves or the database's ``CONNECT`` grants; the runbook in
 docs/BACKUP.md says what to recreate around it.
 
+**Nothing newer than its target loads into it** (#509). Two majors can be newer
+than the target server, and either fails the load partway, after the download:
+the local ``pg_restore``, which writes its own session ``SET``s at load time
+(none are in the archive), so a 17-or-later client's ``SET transaction_timeout``
+reaches a 16 server (watcher#365: 18 against 16); and the archive's ``pg_dump``,
+whose DDL an older server need not accept. So the target's major and the loading
+client's are asked before the fetch, and the ``pg_dump`` major is read from the
+fetched archive's own header, never the object's metadata. Same or older proceeds.
+
 **The source host is always named.** A restore runs on a different host from
 the one that shipped the dump, so the backup's default prefix (this hostname) is
 the one prefix never wanted: once the new host's own timer has run it would
@@ -34,6 +43,7 @@ find a real, verifiable dump of the wrong database. ``--latest`` takes
 import argparse
 import os
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -56,6 +66,7 @@ from src.core.backup import (
     UPLOAD_TIMEOUT_SECONDS,
     BackupError,
     Runner,
+    Toc,
     password_in,
     sha256_file,
     tail,
@@ -72,7 +83,18 @@ logger = get_logger("src.core.restore")
 CLOCK_SKEW_TOLERANCE = timedelta(minutes=10)
 
 # What `--list` prints beside each name, in this order.
-_LISTED_METADATA = ("dumped_at", "alembic_head", "size_bytes", "source_host", "sha256")
+_LISTED_METADATA = (
+    "dumped_at",
+    "alembic_head",
+    "pg_dump_version",
+    "server_version",
+    "size_bytes",
+    "source_host",
+    "sha256",
+)
+
+#: The first number in a version as any PostgreSQL tool prints it: its major.
+_MAJOR_RE = re.compile(r"\d+")
 
 #: A bare database name, as ``--into archiver_restore_test`` gives it.
 _PLAIN_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -111,6 +133,35 @@ def as_user(argv: list[str], run_as: str | None) -> list[str]:
         "--reset-env",
         "--",
         *argv,
+    ]
+
+
+def pg_major(version: str | None) -> int | None:
+    """The major of a PostgreSQL version as any tool prints it, or None.
+
+    ``16`` from a TOC's ``16.15 (Ubuntu …)`` and from ``pg_restore --version``'s
+    ``pg_restore (PostgreSQL) 16.15``.
+    """
+    match = _MAJOR_RE.search(version or "")
+    return int(match.group()) if match else None
+
+
+def _fields(values: Mapping[str, str | None], names: tuple[str, ...]) -> list[str]:
+    """``name=value`` words, each value shell-quoted: versions hold spaces."""
+    return [f"{name}={shlex.quote(values.get(name) or '')}" for name in names]
+
+
+def _psql_scalar(database: str, query: str) -> list[str]:
+    """``psql`` asking ``database`` one value, bare on stdout."""
+    return [
+        "psql",
+        "--no-password",
+        "--no-psqlrc",
+        "--quiet",
+        "--tuples-only",
+        "--no-align",
+        f"--dbname={database}",
+        f"--command={query}",
     ]
 
 
@@ -204,7 +255,16 @@ def _private_dir(dest_dir: Path) -> None:
         )
 
 
-def fetch(client: storage.Client, bucket: str, key: str, dest_dir: Path, *, runner: Runner) -> Path:
+class Fetched(NamedTuple):
+    """A verified download, and what its own header says (``pg_restore --list``)."""
+
+    path: Path
+    toc: Toc
+
+
+def fetch(
+    client: storage.Client, bucket: str, key: str, dest_dir: Path, *, runner: Runner
+) -> Fetched:
     """Download ``key`` into ``dest_dir`` and prove it is the dump that was shipped.
 
     The file is created ``O_EXCL | O_NOFOLLOW`` at 0600 in a private directory,
@@ -233,13 +293,13 @@ def fetch(client: storage.Client, bucket: str, key: str, dest_dir: Path, *, runn
         if actual != expected:
             raise RestoreError(f"{key}: sha256 {actual} does not match the recorded {expected}")
         try:
-            verify_dump(path, runner=runner)
+            toc = verify_dump(path, runner=runner)
         except BackupError as e:
             raise RestoreError(str(e)) from e
     except BaseException:
         path.unlink(missing_ok=True)
         raise
-    return path
+    return Fetched(path, toc)
 
 
 def production_refusal(database: str, *, allow_production: bool) -> str | None:
@@ -268,19 +328,7 @@ def assert_empty(database: str, *, run_as: str | None, runner: Runner) -> None:
     is fetched, and as the user that will restore, so it also proves the
     database exists and that user can reach it.
     """
-    argv = as_user(
-        [
-            "psql",
-            "--no-password",
-            "--no-psqlrc",
-            "--quiet",
-            "--tuples-only",
-            "--no-align",
-            f"--dbname={database}",
-            f"--command={_CONTENT_QUERY}",
-        ],
-        run_as,
-    )
+    argv = as_user(_psql_scalar(database, _CONTENT_QUERY), run_as)
     result = runner(
         argv, capture_output=True, text=True, check=False, timeout=QUERY_TIMEOUT_SECONDS
     )
@@ -291,6 +339,83 @@ def assert_empty(database: str, *, run_as: str | None, runner: Runner) -> None:
         raise RestoreError(
             f"the target is not empty ({count} schemas and relations); restore only into a "
             "new database (createdb), never over one"
+        )
+
+
+def target_major(database: str, *, run_as: str | None, runner: Runner) -> int:
+    """The target server's major, asked as the user the restore loads as."""
+    argv = as_user(_psql_scalar(database, "SHOW server_version_num"), run_as)
+    result = runner(
+        argv, capture_output=True, text=True, check=False, timeout=QUERY_TIMEOUT_SECONDS
+    )
+    if result.returncode != 0:
+        raise RestoreError(
+            f"psql could not ask the target its server version: {tail(result.stderr)}"
+        )
+    answer = (result.stdout or "").strip()
+    if not answer.isdigit():
+        raise RestoreError(f"the target answered {answer!r} for its server version")
+    return int(answer) // 10000
+
+
+def client_major(database: str, *, run_as: str | None, runner: Runner) -> int:
+    """The major of the ``pg_restore`` the load will run, asked as the user it runs as.
+
+    Ubuntu's pg_wrapper picks the binary from that user's environment and
+    cluster map, and from the arguments (``service=``), so the probe goes
+    through the same ``as_user`` and carries the load's ``--dbname``.
+    ``--version`` comes first: ``pg_restore`` answers it only as ``argv[1]``,
+    before reading the rest, and rejects it anywhere else.
+    """
+    argv = as_user(["pg_restore", "--version", f"--dbname={database}"], run_as)
+    result = runner(
+        argv, capture_output=True, text=True, check=False, timeout=QUERY_TIMEOUT_SECONDS
+    )
+    if result.returncode != 0:
+        raise RestoreError(
+            f"pg_restore --version exited {result.returncode}: {tail(result.stderr)}"
+        )
+    major = pg_major(result.stdout)
+    if major is None:
+        answer = (result.stdout or "").strip()
+        raise RestoreError(f"pg_restore --version named no version ({answer!r})")
+    return major
+
+
+def check_client(client: int, target: int) -> None:
+    """Refuse a ``pg_restore`` newer than the target server's major.
+
+    It writes its own session ``SET``s, and a newer one writes settings an
+    older server rejects: 17's ``transaction_timeout`` against 16.
+    """
+    if client > target:
+        raise RestoreError(
+            f"the local pg_restore {client} is newer than the target's PostgreSQL {target}, "
+            "which would reject the settings it writes partway through; load with "
+            f"postgresql-client-{target}'s pg_restore (Ubuntu's pg_wrapper runs the local "
+            "cluster's major, else the newest installed) or into a PostgreSQL "
+            f"{client} or newer server"
+        )
+
+
+def check_compatible(toc: Toc, target: int) -> None:
+    """Refuse an archive written by a newer ``pg_dump`` major than ``target``.
+
+    Read from the archive's own header, never the object's metadata, which a
+    re-upload could rewrite. An absent or unreadable version refuses too: every
+    custom-format header carries it. Only ``pg_dump``'s: it refuses to dump a
+    newer server, so the archive's ``server_version`` is never the newer one.
+    """
+    dumped_by = pg_major(toc.pg_dump_version)
+    if dumped_by is None:
+        raise RestoreError(
+            f"the archive names no pg_dump version ({toc.pg_dump_version!r}); refusing it"
+        )
+    if dumped_by > target:
+        raise RestoreError(
+            f"the archive was written by pg_dump {dumped_by} ({toc.pg_dump_version}), "
+            f"newer than the target's PostgreSQL {target}, which need not accept what it "
+            f"wrote; restore into a PostgreSQL {dumped_by} or newer server"
         )
 
 
@@ -380,7 +505,7 @@ def main(argv: list[str] | None = None, *, environ: Mapping[str, str] = os.envir
                 created = backup_iso(snapshot.created) if snapshot.created else ""
                 print(
                     snapshot.name,
-                    *(f"{name}={snapshot.metadata.get(name, '')}" for name in _LISTED_METADATA),
+                    *_fields(snapshot.metadata, _LISTED_METADATA),
                     f"created={created}",
                     *(["SUSPECT(named after the bucket created it)"] if snapshot.suspect else []),
                 )
@@ -390,16 +515,26 @@ def main(argv: list[str] | None = None, *, environ: Mapping[str, str] = os.envir
         if not (args.into or args.download_only):
             print("say where: --into DATABASE or --download-only DIR", file=sys.stderr)
             return 2
-        if args.into:
-            assert_empty(args.into, run_as=args.run_as, runner=subprocess.run)
-        key = args.object or latest_key(client, bucket, args.prefix)
         if args.download_only:
-            path = fetch(client, bucket, key, args.download_only, runner=subprocess.run)
-            print(f"verified: {path}")
+            key = args.object or latest_key(client, bucket, args.prefix)
+            fetched = fetch(client, bucket, key, args.download_only, runner=subprocess.run)
+            print(f"verified: {fetched.path}")
+            header = {
+                "pg_dump_version": fetched.toc.pg_dump_version,
+                "server_version": fetched.toc.server_version,
+            }
+            print("archive:", *_fields(header, tuple(header)))
             return 0
+        assert_empty(args.into, run_as=args.run_as, runner=subprocess.run)
+        # Before the fetch: a client newer than the target fails in seconds,
+        # not after the download (#509).
+        target = target_major(args.into, run_as=args.run_as, runner=subprocess.run)
+        check_client(client_major(args.into, run_as=args.run_as, runner=subprocess.run), target)
+        key = args.object or latest_key(client, bucket, args.prefix)
         with tempfile.TemporaryDirectory(prefix="archiver-restore-") as work:
-            path = fetch(client, bucket, key, Path(work), runner=subprocess.run)
-            restore_into(path, args.into, run_as=args.run_as, runner=subprocess.run)
+            fetched = fetch(client, bucket, key, Path(work), runner=subprocess.run)
+            check_compatible(fetched.toc, target)
+            restore_into(fetched.path, args.into, run_as=args.run_as, runner=subprocess.run)
     except Exception as e:
         # One exit and one sentence for every failure, whatever raised it:
         # google.auth's RefreshError, the listing's Forbidden, the download's

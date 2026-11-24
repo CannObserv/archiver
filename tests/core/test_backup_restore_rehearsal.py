@@ -56,6 +56,21 @@ def _major(version_text: str) -> int:
     return int(re.search(r"(\d+)", version_text).group(1))
 
 
+def _version_of(binary: str) -> str:
+    """What ``binary --version`` prints, run directly: the probes' ground truth."""
+    return subprocess.run([binary, "--version"], capture_output=True, text=True).stdout
+
+
+async def _server_major(url: str) -> int:
+    """The server's major, asked over the test engine rather than ``psql``."""
+    engine = create_async_engine(url)
+    try:
+        async with engine.connect() as conn:
+            return int((await conn.execute(text("SHOW server_version_num"))).scalar()) // 10000
+    finally:
+        await engine.dispose()
+
+
 @pytest.fixture
 async def databases():
     """Two scratch databases on the test server, created and always dropped.
@@ -179,9 +194,19 @@ async def test_a_dump_survives_the_round_trip_whole(databases, tmp_path: Path) -
     assert summary["alembic_head"] == "rehearsal01"
 
     restore.assert_empty(_libpq(target), run_as=None, runner=subprocess.run)
+    # The real probes and the real header (#509), each against what the tool
+    # itself answers, so a runner image with another major still checks the
+    # probe rather than a hard-coded 16. CI's pair is one major: it passes.
+    target_major = restore.target_major(_libpq(target), run_as=None, runner=subprocess.run)
+    assert target_major == await _server_major(target)
+    client_major = restore.client_major(_libpq(target), run_as=None, runner=subprocess.run)
+    assert client_major == _major(_version_of("pg_restore"))
+    restore.check_client(client_major, target_major)
     key = restore.latest_key(client, BUCKET, "rehearsal")
-    path = restore.fetch(client, BUCKET, key, tmp_path / "fetched", runner=subprocess.run)
-    restore.restore_into(path, _libpq(target), run_as=None, runner=subprocess.run)
+    fetched = restore.fetch(client, BUCKET, key, tmp_path / "fetched", runner=subprocess.run)
+    assert restore.pg_major(fetched.toc.pg_dump_version) == _major(_version_of("pg_dump"))
+    restore.check_compatible(fetched.toc, target_major)
+    restore.restore_into(fetched.path, _libpq(target), run_as=None, runner=subprocess.run)
 
     before, after = await _read(source), await _read(target)
     assert after == before
@@ -245,7 +270,7 @@ async def test_a_restore_that_fails_partway_changes_nothing(databases, tmp_path:
     await _seed(target, [conflict, "INSERT INTO public.zz_conflict VALUES (1), (2), (3)"])
 
     client, _ = _ship(source, tmp_path)
-    path = restore.fetch(
+    fetched = restore.fetch(
         client,
         BUCKET,
         restore.latest_key(client, BUCKET, "rehearsal"),
@@ -253,7 +278,7 @@ async def test_a_restore_that_fails_partway_changes_nothing(databases, tmp_path:
         runner=subprocess.run,
     )
     with pytest.raises(restore.RestoreError, match="zz_conflict"):
-        restore.restore_into(path, _libpq(target), run_as=None, runner=subprocess.run)
+        restore.restore_into(fetched.path, _libpq(target), run_as=None, runner=subprocess.run)
 
     engine = create_async_engine(target)
     async with engine.connect() as conn:
