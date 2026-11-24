@@ -103,6 +103,30 @@ async def test_post_returns_422_on_bad_provider_sub_schema(client):
 
 
 @pytest.mark.asyncio
+async def test_post_refuses_the_retired_date_key_naming_the_vocabulary(client):
+    """archiver#523: ``{source_revision.date}`` is now ``{source_revision.date_label}``.
+
+    No alias is kept, so an API author still using the old name gets the
+    ordinary unknown-key refusal, which lists the closed vocabulary.
+    """
+    bad = _gcs_doc() | {
+        "path_template": "archive/{source_revision.date}/{source_revision.fingerprint}.html",
+        "required_fields": [],
+    }
+    resp = await client.post(
+        "/api/v1/rep-specs",
+        headers=HEADERS,
+        json={"provider": "gcs", "name": "x", "document": bad},
+    )
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "schema"
+    [error] = [e for e in detail["errors"] if e["path"] == "/path_template"]
+    assert "source_revision.date is not a value the renderer supplies" in error["message"]
+    assert "'date_label'" in error["message"]
+
+
+@pytest.mark.asyncio
 async def test_post_returns_422_on_provider_mismatch(client):
     bad = _gdrive_doc()  # document says gdrive
     resp = await client.post(

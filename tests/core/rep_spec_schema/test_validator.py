@@ -114,7 +114,7 @@ def test_gcs_bad_storage_class_rejected():
 def test_template_without_occasion_discriminator_rejected():
     """R2: a date-only template renders one key for two revisions captured that day."""
     doc = _valid_gcs(
-        path_template="archive/{info_item.slug}/{source_revision.date}.html",
+        path_template="archive/{info_item.slug}/{source_revision.date_label}.html",
         required_fields=["info_item.slug"],
     )
     ok, errs = validate_rep_spec(doc)
@@ -136,8 +136,8 @@ def test_template_placeholder_absent_from_required_fields_rejected():
 def test_occasion_namespace_in_required_fields_rejected():
     """source_revision.* is supplied per occasion; no bag can hold it."""
     doc = _valid_gcs(
-        path_template="archive/{source_revision.date}/{source_revision.id}.html",
-        required_fields=["source_revision.date"],
+        path_template="archive/{source_revision.date_label}/{source_revision.id}.html",
+        required_fields=["source_revision.date_label"],
     )
     ok, errs = validate_rep_spec(doc)
     assert ok is False
@@ -167,7 +167,7 @@ def test_template_errors_reported_alongside_an_unrelated_envelope_error():
     Suppressing template checks on *any* envelope error costs the author a
     round trip: fix the alias, resubmit, learn the template is wrong too.
     """
-    doc = _valid_gcs(path_template="archive/{info_item.slug}/{source_revision.date}.html")
+    doc = _valid_gcs(path_template="archive/{info_item.slug}/{source_revision.date_label}.html")
     del doc["credentials_alias"]
     ok, errs = validate_rep_spec(doc)
     assert ok is False

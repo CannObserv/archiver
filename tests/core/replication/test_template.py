@@ -83,13 +83,14 @@ def test_occasion_namespace_keys_are_the_declared_eight():
     The four added in archiver#205 (``year``, ``date_segment``,
     ``datetime_time_segment``, ``ext``) mirror the storage framework's
     ``_DateProps`` names so a template copied from its ``defaults.toml`` renders
-    identically here.
+    identically here. ``date_label`` is that vocabulary's name for the
+    ``YYYY-MM-DD`` string this key used to call ``date`` (archiver#523).
     """
     assert OCCASION_NAMESPACE == "source_revision"
     assert OCCASION_KEYS == frozenset(
         {
             "id",
-            "date",
+            "date_label",
             "fingerprint",
             "captured_at",
             "year",
@@ -123,10 +124,27 @@ def test_unknown_occasion_key_rejected():
     assert any("source_revision.slug" in e["message"] for e in errors)
 
 
+def test_the_retired_date_key_is_refused_naming_the_vocabulary():
+    """archiver#523: ``date`` became ``date_label``, with no alias kept.
+
+    The refusal is the ordinary unknown-key one: it lists the closed
+    vocabulary, so the author reads ``date_label`` there without a special case
+    keeping the old name alive in code.
+    """
+    errors = validate_path_template(
+        "archive/{source_revision.date}/{source_revision.id}", required_fields=[]
+    )
+    assert [e["path"] for e in errors] == ["/path_template"]
+    message = errors[0]["message"]
+    assert message.startswith("source_revision.date is not a value the renderer supplies")
+    assert "'date_label'" in message
+    assert "'date'," not in message
+
+
 def test_occasion_key_needs_no_required_fields_entry():
     """The occasion is supplied per replication, not from the InfoItem's bag."""
     errors = validate_path_template(
-        "archive/{source_revision.date}/{source_revision.id}", required_fields=[]
+        "archive/{source_revision.date_label}/{source_revision.id}", required_fields=[]
     )
     assert errors == []
 
@@ -134,8 +152,8 @@ def test_occasion_key_needs_no_required_fields_entry():
 def test_occasion_namespace_in_required_fields_rejected():
     """Listing it would demand a bag entry no InfoItem can hold."""
     errors = validate_path_template(
-        "archive/{source_revision.date}/{source_revision.id}",
-        required_fields=["source_revision.date"],
+        "archive/{source_revision.date_label}/{source_revision.id}",
+        required_fields=["source_revision.date_label"],
     )
     assert any(e["path"] == "/required_fields" for e in errors)
 
@@ -174,7 +192,7 @@ def test_required_field_unused_by_template_is_allowed():
 def test_template_without_discriminator_rejected():
     """A date-only template collides for two revisions captured the same day."""
     errors = validate_path_template(
-        "archive/{info_item.slug}/{source_revision.date}.html",
+        "archive/{info_item.slug}/{source_revision.date_label}.html",
         required_fields=["info_item.slug"],
     )
     assert any("discriminator" in e["message"] for e in errors)
