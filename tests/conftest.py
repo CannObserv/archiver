@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import os
+import re
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -173,6 +174,32 @@ os.environ.pop("ARCHIVER_CAPTURE_ENABLED", None)
 # test runs would refuse to start without Notifier, or queue sends with it.
 os.environ.pop("ARCHIVER_NOTIFY_CUTOVER_AT", None)
 os.environ.pop("ARCHIVER_DEV_NOTIFY_CUTOVER_AT", None)
+
+
+# ---------------------------------------------------------------------------
+# The browser tier (archiver#546): collected only when ``-m`` selects it.
+#
+# Not by ``addopts``: a command-line ``-m`` replaces that expression, so CI's
+# ``-m "not integration"`` would bring the tier back (power-map #304). Ignoring
+# the directory also means a run that never asked for the tier never imports
+# Playwright, so the default gate needs no ``browser`` group; one that asks
+# without it fails on ``tests/browser/conftest.py``'s import, never a skip.
+# ---------------------------------------------------------------------------
+BROWSER_DIR = Path(__file__).resolve().parent / "browser"
+_NOT_BROWSER = re.compile(r"\bnot\s+browser\b")
+_BROWSER = re.compile(r"\bbrowser\b")
+
+
+def selects_browser(markexpr: str) -> bool:
+    """True when a ``-m`` expression names ``browser`` other than as ``not browser``."""
+    return bool(_BROWSER.search(_NOT_BROWSER.sub("", markexpr)))
+
+
+def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
+    """Leave ``tests/browser/`` uncollected unless the run's ``-m`` selects it."""
+    if collection_path != BROWSER_DIR and BROWSER_DIR not in collection_path.parents:
+        return None
+    return True if not selects_browser(config.option.markexpr or "") else None
 
 
 def _run_alembic_upgrade() -> None:
