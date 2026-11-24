@@ -37,8 +37,8 @@ the core triage modules directly, with no API route between.
   **POST `.../outbox/{row_id}/discard`** - `hx-confirm` naming the row and topic.
 - **GET `/dashboard/bus-triage/dlq/{dlq}`** - `dlq_triage.list_dead_letters`, oldest
   first: entry id and time ("time past year 9999" where the id's millisecond half is
-  beyond what `datetime` holds, #401; such a queue sticks, BUS_CONSUMERS.md § DLQ
-  triage); the parking group with an "archiver" / "not archiver" badge,
+  beyond what `datetime` holds: [§ An id past year 9999](#an-id-past-year-9999)); the
+  parking group with an "archiver" / "not archiver" badge,
   or "no provenance"; `parked_as`, `source_id`, `reason`; `event_type` with a "decodes" /
   "does not decode" badge and `decode_error`; the fields in a `<details>`. A "parked twice"
   badge on entries sharing `(provenance.group, provenance.source_id)` on the page. The read
@@ -65,6 +65,17 @@ action` journald line: `app_user_id` (never the email), `action`, `queue`
 (`changes_outbox` or the DLQ), `ids`, `outcome` (`interrupted` for a mid-way broker
 failure, `error` when the core call raised - the crash itself still reaches the error
 handler).
+
+## An id past year 9999
+
+Redis takes any uint64 millisecond half in a stream id; `datetime` stops at
+9999-12-31 (#401). Such an entry lists with `dead_lettered_at` null (the API) or "time
+past year 9999" (this screen), and its `entry_id` is the way back to the journald line.
+It discards and reprocesses like any other entry. It comes from a client `XADD`ing an
+explicit far-future id, or a broker clock that far ahead. **The queue then sticks:** an
+auto id must exceed the stream's last id, and `XDEL` does not lower it, so every later
+dead letter on that queue is past 9999 too. Resetting the last id is an `XSETID` on the
+queue: broker's operation, not archiver's. File it on broker.
 
 ## Which port: 8000, on the operator's ask
 
