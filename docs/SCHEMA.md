@@ -171,8 +171,9 @@ document; the dashboard's Registry badge reports the count
   `co_core.pure.util.aliases` (e.g. `gcs-publication`), and the prefix must equal `provider`.
   Checked on save only, so a frozen assigned document is never re-judged. The pre-rule name
   `primary` is refused. Migration `70f32f641751` moved production's one RepSpec to
-  `gcs-publication`, the one recorded exception to #83's freeze: both names bind the same
-  bucket, so no destination changed.
+  `gcs-publication`, the first recorded exception to #83's freeze: both names bind the same
+  bucket, so no destination changed. The second is `e4897ee850d9`'s occasion-key rename
+  (archiver#523, below).
   **Re-judged only at new assignment** (archiver#334): a *new* assignment is where a draft
   document freezes, so `assign_rep_spec` and `POST /info-items` run the whole of
   `validate_rep_spec` (envelope, provider sub-schema, `path_template` contract, this rule) and
@@ -190,7 +191,7 @@ document; the dashboard's Registry badge reports the count
   - `source_revision.*` is the **occasion** namespace: supplied per replication by
     `src.core.replication.destination.RenderOccasion`, and therefore **rejected** in
     `required_fields` — no `rep_fields` bag can hold it. Eight keys: `id` (the revision ULID),
-    `fingerprint` (sha256 hex, prefix dropped), `date` (`YYYY-MM-DD`), `captured_at`
+    `fingerprint` (sha256 hex, prefix dropped), `date_label` (`YYYY-MM-DD`), `captured_at`
     (`YYYYMMDDTHHMMSSZ`), and — added in archiver#205 so a template copied from the storage
     framework's `defaults.toml` renders byte-identically — `year` (`%Y`), `date_segment`
     (`%Y_%m_%d`), `datetime_time_segment` (`%Y_%m_%d-%H_%M_%S`), all in UTC, and `ext`, derived
@@ -198,8 +199,12 @@ document; the dashboard's Registry badge reports the count
     when unknown or `application/octet-stream`). The canonical layout is the framework's
     `infoitem_revision` location (cannobserv#406, epic #207):
     `organizations/{org.title_slug}/infoitems/{info_item.name_slug}/{source_revision.year}/{source_revision.datetime_time_segment}-{info_item.name_slug}-{source_revision.id}.{source_revision.ext}`.
+    `date_label` was `date` until archiver#523, which gave it the shared storage vocabulary's
+    name for the same string, with no alias. Migration `e4897ee850d9` rewrote every stored
+    `path_template`: a recorded #83 exception, since the bytes are the same and no destination
+    moved. `{source_revision.date}` is now refused as an unknown key.
   - The template must carry `{source_revision.id}` or `{source_revision.fingerprint}` (the
-    issuer contract's R2). `date` is not a discriminator: two revisions captured the same day
+    issuer contract's R2). `date_label` is not a discriminator: two revisions captured the same day
     would render one destination, which returns as `destination_conflict` — a conflict token
     for what is really a path-design error.
 

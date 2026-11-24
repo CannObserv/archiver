@@ -212,6 +212,12 @@ class RenderOccasion:
         type. Together they let the framework's ``infoitem_revision`` location
         be copied into a RepSpec verbatim and render the same key it would.
 
+        ``date_label`` is that vocabulary's ``%Y-%m-%d``, renamed from ``date``
+        by archiver#523. It keeps the ``isoformat()`` it rendered under the old
+        name, so a rewritten frozen RepSpec writes to the same key: the two agree
+        for every four-digit year, and ``isoformat()`` is the one of the two
+        that zero-pads below 1000 on every platform.
+
         Every value is checked against the same segment charset the bag half
         pays (CR #2): the occasion is caller-supplied too, and a guard covering
         half its inputs is half a guard.
@@ -232,7 +238,7 @@ class RenderOccasion:
         _, _, digest = self.content_fingerprint.rpartition(":")
         values = {
             "id": self.source_revision_id,
-            "date": captured.date().isoformat(),
+            "date_label": captured.date().isoformat(),
             "fingerprint": digest,
             "captured_at": captured.strftime("%Y%m%dT%H%M%SZ"),
             "year": captured.strftime("%Y"),

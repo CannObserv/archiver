@@ -111,8 +111,8 @@ that already exist.
 
 Migration `70f32f641751` rewrote `document.credentials_alias` from `primary` to
 `gcs-publication` on production's one RepSpec. That RepSpec was assigned, so
-tier 3 froze its document. This is the only edit made to a frozen document, and
-it did not go through a route. The contract above is otherwise unchanged:
+tier 3 froze its document. This was the first edit made to a frozen document
+(the second is below), and it did not go through a route. The contract above is otherwise unchanged:
 `PATCH` still refuses an assigned document.
 
 It keeps this ADR's promise, which is that an assignment names the document
@@ -127,3 +127,20 @@ Why not #95 (clone and migrate)? It is still open, and the change was forced by
 a deadline: Replicator retires `primary` on 2026-12-31. Building tier 3 for a
 single alias rename, with no change in behaviour, would have put the machinery
 ahead of the need this ADR deferred it for.
+
+## Amendment 2026-11-24: a second migrated exception (archiver#523)
+
+Migration `e4897ee850d9` rewrites `{source_revision.date}` to
+`{source_revision.date_label}` in every RepSpec's `document.path_template`,
+assigned ones included. The occasion key was renamed to the shared storage
+vocabulary's name for the same `YYYY-MM-DD` string (cannobserv#703), and no
+alias was kept, so a frozen document naming the old key would have stopped
+rendering. The operator granted the exception on 2026-11-17.
+
+It keeps the same promise for the same reason as `70f32f641751`: the rewrite
+changes no behaviour. `date_label` renders exactly the bytes `date` did, so
+every destination stays where it was. `updated_at` records the edit. Only the
+exact token, braces included, is touched, in `path_template` only. At authoring
+it matched 0 of production's 1 RepSpec and 0 of `archiver_dev`'s 3 (#164's
+count), so the exception covers a path that no stored document took that day.
+`PATCH` still refuses an assigned document.

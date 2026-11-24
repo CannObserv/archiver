@@ -35,6 +35,7 @@ from src.core.replication.destination import (
     render_destination,
 )
 from src.core.replication.errors import ReplicationRenderError
+from src.core.replication.template import MalformedTemplateError
 from tests.core._import_scan import assigned_names, imported_modules
 
 FINGERPRINT = "sha256:" + "ab" * 32
@@ -88,11 +89,59 @@ def test_fingerprint_renders_without_the_algorithm_prefix():
     assert rendered == "ab" * 32
 
 
-def test_date_renders_as_iso_calendar_date():
+def test_date_label_renders_as_iso_calendar_date():
     rendered = render_destination(
-        "{source_revision.date}/{source_revision.id}", rep_fields={}, occasion=_occasion(), org=None
+        "{source_revision.date_label}/{source_revision.id}",
+        rep_fields={},
+        occasion=_occasion(),
+        org=None,
     )
     assert rendered.startswith("2026-08-17/")
+
+
+@pytest.mark.parametrize(
+    "captured_at",
+    [
+        datetime(2026, 8, 17, 14, 30, 5, tzinfo=UTC),
+        datetime(2026, 8, 17, 0, 0, 0, tzinfo=UTC),
+        datetime(2026, 12, 31, 23, 59, 59, 999999, tzinfo=UTC),
+        datetime(2026, 8, 17, 1, 30, tzinfo=timezone(timedelta(hours=4))),
+        datetime(2026, 8, 16, 22, 30, tzinfo=timezone(timedelta(hours=-5))),
+    ],
+)
+def test_date_label_renders_the_bytes_the_retired_date_key_did(captured_at):
+    """archiver#523 moves no destination: the rename is a name, not a format.
+
+    The retired ``date`` key rendered ``captured_at.astimezone(UTC).date().isoformat()``
+    (``destination.py`` at ``d03b147b``). ``date_label`` must give the same
+    bytes for the same occasion — across midnight and outside UTC too — or a
+    rewritten frozen RepSpec would start writing to a new key. It is also the
+    shared vocabulary's ``%Y-%m-%d``, spelled the way ``_DateProps`` spells it.
+    """
+    occasion = _occasion(captured_at=captured_at)
+    retired = captured_at.astimezone(UTC).date().isoformat()
+
+    rendered = render_destination(
+        "archive/{source_revision.date_label}/{source_revision.id}.html",
+        rep_fields={},
+        occasion=occasion,
+        org=None,
+    )
+
+    assert rendered == f"archive/{retired}/01JZZZZZZZZZZZZZZZZZZZZZZZ.html"
+    assert occasion.values()["date_label"] == captured_at.astimezone(UTC).strftime("%Y-%m-%d")
+
+
+def test_the_occasion_no_longer_supplies_date():
+    """No alias (archiver#523): one name per spelling, so ``date`` is gone."""
+    assert "date" not in _occasion().values()
+    with pytest.raises(MalformedTemplateError, match="source_revision.date is not a value"):
+        render_destination(
+            "{source_revision.date}/{source_revision.id}",
+            rep_fields={},
+            occasion=_occasion(),
+            org=None,
+        )
 
 
 def test_captured_at_renders_in_basic_iso_form():
@@ -131,8 +180,8 @@ def test_same_occasion_renders_the_same_key_twice():
 def test_occasion_value_wins_over_a_bag_namespace_of_the_same_name():
     """A bag cannot shadow the occasion — the reserved namespace is reserved."""
     rendered = render_destination(
-        "{source_revision.date}/{source_revision.id}",
-        rep_fields={"source_revision": {"date": "1999-01-01"}},
+        "{source_revision.date_label}/{source_revision.id}",
+        rep_fields={"source_revision": {"date_label": "1999-01-01"}},
         occasion=_occasion(),
         org=None,
     )
@@ -257,7 +306,7 @@ def test_naive_captured_at_refused():
 def test_non_utc_captured_at_is_converted_not_refused():
     """An aware value in another zone is unambiguous; only naive is refused."""
     rendered = render_destination(
-        "{source_revision.date}/{source_revision.id}",
+        "{source_revision.date_label}/{source_revision.id}",
         rep_fields={},
         occasion=_occasion(
             captured_at=datetime(2026, 8, 17, 1, 30, tzinfo=timezone(timedelta(hours=4)))
