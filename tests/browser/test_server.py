@@ -6,6 +6,7 @@ errors until ``information`` is dropped), so stopping is tested on both paths:
 the fixture's own teardown, and the parent dying without one (SIGKILL).
 """
 
+import asyncio
 import os
 import signal
 import socket
@@ -106,7 +107,7 @@ async def test_stop_closes_the_port_and_releases_the_database(test_engine) -> No
         assert not _port_open(server.port)
         deadline = time.monotonic() + 10
         while (await _backend_pids(conn)) & opened and time.monotonic() < deadline:
-            time.sleep(0.1)
+            await asyncio.sleep(0.1)
         assert not (await _backend_pids(conn)) & opened
 
 
