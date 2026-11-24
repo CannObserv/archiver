@@ -15,7 +15,8 @@ here, which is the intent. Run::
   identity, a viewport, touch, and reduced-motion and color-scheme emulation.
 
 Rows a test commits are its own to delete. The one row the server writes itself,
-the ``AppUser`` an authed dashboard GET upserts, is deleted at session end.
+the ``AppUser`` an authed dashboard GET upserts, ``open_page`` deletes after each
+test, so a run mixing tiers never shows it to a later test (CR 5).
 """
 
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -54,11 +55,6 @@ async def live_server(test_engine) -> AsyncIterator[LiveServer]:
         yield server
     finally:
         server.stop()
-        async with test_engine.begin() as conn:
-            await conn.execute(
-                text("DELETE FROM information.app_users WHERE external_id = :ext"),
-                {"ext": USER_ID},
-            )
 
 
 @pytest.fixture(scope="session")
@@ -75,7 +71,9 @@ OpenPage = Callable[..., Awaitable[Page]]
 
 
 @pytest.fixture
-async def open_page(browser: Browser, live_server: LiveServer) -> AsyncIterator[OpenPage]:
+async def open_page(
+    browser: Browser, live_server: LiveServer, test_engine
+) -> AsyncIterator[OpenPage]:
     """``await open_page(path, width=..., has_touch=..., reduced_motion=..., color_scheme=...)``."""
     contexts = []
 
@@ -106,3 +104,8 @@ async def open_page(browser: Browser, live_server: LiveServer) -> AsyncIterator[
     yield _open
     for context in contexts:
         await context.close()
+    async with test_engine.begin() as conn:
+        await conn.execute(
+            text("DELETE FROM information.app_users WHERE external_id = :ext"),
+            {"ext": USER_ID},
+        )

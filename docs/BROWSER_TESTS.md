@@ -76,7 +76,7 @@ no tier for this cache and needs none.
   dashboard's `X-ExeDev-*` identity and a 5 s default timeout.
 - **Seeds:** a test commits its own rows and deletes them (see
   `test_register_overflow.py`); the server sees no savepoint. The `AppUser` an
-  authed GET upserts is deleted at session end.
+  authed GET upserts is deleted after each test that opened a page.
 
 ## Writing a test
 
