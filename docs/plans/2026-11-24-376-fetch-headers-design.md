@@ -171,6 +171,10 @@ binding names this host. Those failures close the fetch `credential_unknown` or
 `credential_refused`, which Watcher reports as `health_reason` on `info.watch-status`, and
 the item's health row shows it.
 
+**References may ride a retained stream; values never do** (the charter, and the 2026-11-22
+relay on #376). A `fetch-<role>` name in every hourly full set leaks nothing: only
+Replicator's host can resolve it.
+
 **Plain values are public-equivalent.** They ride `info.registry`, are retained, and are
 repeated in every hourly full set, once per item. Every reader of that stream can see them,
 which today means Watcher and the broker's admin role. Anything an operator wouldn't print
