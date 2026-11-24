@@ -76,6 +76,8 @@ class FakePg:
         fail: str = "",
         truncated: bool = False,
         objects: int = 0,
+        server_version_num: str = "160015",
+        pg_restore_version: str = "pg_restore (PostgreSQL) 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)",
     ) -> None:
         self.toc = toc
         self.head = head
@@ -85,6 +87,10 @@ class FakePg:
         self.truncated = truncated
         #: What the restore's emptiness probe counts in its target.
         self.objects = objects
+        #: What the restore's version probes hear: the target's
+        #: ``server_version_num`` and the loading ``pg_restore --version`` (#509).
+        self.server_version_num = server_version_num
+        self.pg_restore_version = pg_restore_version
         self.calls: list[list[str]] = []
 
     def __call__(self, argv: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -97,8 +103,18 @@ class FakePg:
             return subprocess.CompletedProcess(argv, 0, stdout=None, stderr=b"")
         if program == "psql":
             query = next(a for a in argv if a.startswith("--command="))
-            answer = self.head if "alembic_version" in query else str(self.objects)
+            if "alembic_version" in query:
+                answer = self.head
+            elif "server_version_num" in query:
+                answer = self.server_version_num
+            else:
+                answer = str(self.objects)
             return subprocess.CompletedProcess(argv, 0, stdout=f"{answer}\n", stderr="")
+        if program == "pg_restore" and argv[argv.index(program) + 1] == "--version":
+            # Answered before the rest is read, as the real one does (#509).
+            return subprocess.CompletedProcess(
+                argv, 0, stdout=f"{self.pg_restore_version}\n", stderr=""
+            )
         if program == "pg_restore" and "--file=/dev/null" in argv:
             if self.truncated:
                 error = "pg_restore: error: could not read from input file: end of file\n"
