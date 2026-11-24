@@ -40,6 +40,10 @@ RESERVED_PORTS = frozenset({8000, 8001})
 READY_TIMEOUT_SECONDS = 30.0
 STOP_TIMEOUT_SECONDS = 10.0
 _PR_SET_PDEATHSIG = 1
+#: Resolved here, in the parent: between fork and exec the child runs only this
+#: C call, never a library load, which could block on a lock another thread of
+#: the parent held at the fork.
+_prctl = ctypes.CDLL(None, use_errno=True).prctl
 
 
 def free_port() -> int:
@@ -60,8 +64,7 @@ def _die_with_parent(parent_pid: int):
     """A ``preexec_fn``: the child gets SIGKILL when the process that forked it dies."""
 
     def _arm() -> None:
-        libc = ctypes.CDLL(None, use_errno=True)
-        if libc.prctl(_PR_SET_PDEATHSIG, signal.SIGKILL) != 0:
+        if _prctl(_PR_SET_PDEATHSIG, signal.SIGKILL) != 0:
             os._exit(70)
         # The parent may have died between fork and prctl: then nobody signals.
         if os.getppid() != parent_pid:
