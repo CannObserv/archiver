@@ -173,8 +173,8 @@ narrows a type or enum, adds a required key or a rule - carries one of:
 
 **RepSpecs differ: an assigned document is frozen (#83).** A migration may rewrite
 drafts. If an *assigned* RepSpec is affected, either the migration is a recorded
-#83 exception that moves no destination (the precedent is `70f32f641751`'s alias
-rename), or the tightening waits for #95's clone-and-migrate. Until then an
+#83 exception that moves no destination (the precedents are `70f32f641751`'s alias
+rename and `e4897ee850d9`'s occasion-key rename, #523), or the tightening waits for #95's clone-and-migrate. Until then an
 affected frozen spec stops gaining assignments (#334) and shows as "clone it" on
 the Registry badge's list.
 

@@ -18,6 +18,15 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.49.0 (2026-11-24)
+
+[service] **The occasion key `source_revision.date` is now `source_revision.date_label`** (archiver#523, cannobserv#703). Migration `e4897ee850d9`. SDK unchanged (5.19.0). No destination moves: the key renders the same `YYYY-MM-DD` (UTC) bytes under its new name.
+
+- **Refused at validation:** a RepSpec whose `path_template` says `{source_revision.date}` is a 422 `kind="schema"` on `POST /rep-specs`, `PATCH /rep-specs/{id}`, and at assignment. The error is at `/path_template`, and its message names the closed vocabulary: `source_revision.date is not a value the renderer supplies; the source_revision namespace holds [...]`, a list that includes `date_label`. No alias is kept: `date_label` is the shared storage vocabulary's name for this string, and the vocabulary gives one name to each spelling.
+- **Migration `e4897ee850d9`** rewrites the exact token `{source_revision.date}` to `{source_revision.date_label}` in every RepSpec's `document.path_template`, draft or assigned, and stamps `updated_at`. `date_segment` and `datetime_time_segment` are untouched, as is every other key of the document. For assigned (frozen) documents, this is the second recorded exception to #83's freeze (the operator granted it on 2026-11-17), with the same shape as `70f32f641751`: the rendered output is byte-identical. #164's count: it rewrites **0** RepSpecs on production (0 of 1, assigned) and 0 of 3 on `archiver_dev` [measured 2026-11-24]. Downgrade reverses the rewrite.
+- `[sdk]` Test only: `clients/python/tests/test_rep_spec_methods.py`'s mocked fixture uses the new key. No SDK code, type or method changed, so `archiver-client` stays at 5.19.0 and this is not an SDK release. The OpenAPI snapshot doesn't name the occasion vocabulary: only its `info.version` moves to 4.49.0, and `generated/` regenerates with no diff (`client-drift`).
+- Also in this release, with no contract path: the RepSpec create form's hint lists `date_label`.
+
 ## v4.48.0 (2026-11-24)
 
 [both] **A DLQ entry id past year 9999 no longer breaks listing or discard** (archiver#401). No migration. SDK 5.19.0.

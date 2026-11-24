@@ -21,8 +21,8 @@ at render time. Checking the two against each other at the gate is what keeps
 that from reaching a frozen document.
 
 **A rendered destination must be unique per occasion** (the issuer contract's
-R2). A template discriminated only by ``{source_revision.date}`` renders one key
-for two revisions captured the same day; the consumer reports that as
+R2). A template discriminated only by ``{source_revision.date_label}`` renders one
+key for two revisions captured the same day; the consumer reports that as
 ``destination_conflict``, which reads as a conflict rather than as the
 path-design error it is. So the template must carry ``{source_revision.id}`` or
 ``{source_revision.fingerprint}``.
@@ -48,11 +48,13 @@ OCCASION_NAMESPACE = "source_revision"
 # are spelled and formatted exactly as the storage framework's ``_DateProps`` /
 # ``FileVars`` render them, so a template copied verbatim from its
 # ``defaults.toml`` (the canonical ``organizations/…/infoitems/`` layout, epic
-# #207) renders the same key on both sides.
+# #207) renders the same key on both sides. ``date_label`` (``%Y-%m-%d``) is that
+# vocabulary's name for the string this key used to call ``date``; archiver#523
+# renamed it with no alias, because one spelling gets one name.
 OCCASION_KEYS = frozenset(
     {
         "id",
-        "date",
+        "date_label",
         "fingerprint",
         "captured_at",
         "year",
@@ -62,8 +64,8 @@ OCCASION_KEYS = frozenset(
     }
 )
 
-# The subset that makes a rendered path distinct per occasion (R2). ``date`` is
-# deliberately absent — it is the collision case, not a discriminator.
+# The subset that makes a rendered path distinct per occasion (R2). ``date_label``
+# is deliberately absent — it is the collision case, not a discriminator.
 DISCRIMINATOR_KEYS = frozenset({"id", "fingerprint"})
 
 # ``{namespace.key}`` using the rep_fields naming rule (rep_fields_schema/v1.json)
