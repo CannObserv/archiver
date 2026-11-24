@@ -22,11 +22,11 @@ docs/BACKUP.md says what to recreate around it.
 **Nothing newer than its target loads into it** (#509). Two majors can be newer
 than the target server, and either fails the load partway, after the download:
 the local ``pg_restore``, which writes its own session ``SET``s at load time
-(none are in the archive), so 17's ``SET transaction_timeout`` reaches a 16
-server (watcher#365); and the archive's ``pg_dump``, whose DDL an older server
-need not accept. So the target's major and the loading client's are asked
-before the fetch, and the ``pg_dump`` major is read from the fetched archive's
-own header, never the object's metadata. Same or older proceeds.
+(none are in the archive), so a 17-or-later client's ``SET transaction_timeout``
+reaches a 16 server (watcher#365: 18 against 16); and the archive's ``pg_dump``,
+whose DDL an older server need not accept. So the target's major and the loading
+client's are asked before the fetch, and the ``pg_dump`` major is read from the
+fetched archive's own header, never the object's metadata. Same or older proceeds.
 
 **The source host is always named.** A restore runs on a different host from
 the one that shipped the dump, so the backup's default prefix (this hostname) is
