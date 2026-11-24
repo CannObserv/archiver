@@ -618,6 +618,7 @@ class TestMain:
         err = capsys.readouterr().err
         assert "pg_restore 18" in err and "PostgreSQL 16" in err
         assert "postgresql-client-16" in err
+        assert "fetched" not in err, "the tripwire fired: the dump was fetched"
         assert _programs(newer.calls)[-1] == "pg_restore --version"
 
     def test_an_older_client_into_a_newer_server_restores(self, pg, bucket, monkeypatch) -> None:
