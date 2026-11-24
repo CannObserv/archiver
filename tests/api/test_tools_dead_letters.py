@@ -80,6 +80,43 @@ async def test_list_returns_each_entrys_provenance(client, fake_redis):
     assert item["owned"] is True
 
 
+async def test_list_of_a_stuck_queue_is_a_200_with_null_times(client, fake_redis):
+    """archiver#401: ids past year 9999 list with ``dead_lettered_at`` null, not a
+    500. The second is ``*``, which stays past 9999 once one entry is: the queue
+    sticks until broker resets its last id."""
+    first = (await fake_redis.xadd(DLQ, {"n": "0"}, id="300000000000000-0")).decode()
+    second = (await fake_redis.xadd(DLQ, {"n": "1"})).decode()
+
+    resp = await client.get(LIST_URL, headers=HEADERS)
+
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert [(i["entry_id"], i["dead_lettered_at"]) for i in items] == [
+        (first, None),
+        (second, None),
+    ]
+
+
+async def test_discard_of_a_stuck_queue_succeeds(client, fake_redis):
+    ids = [
+        (await fake_redis.xadd(DLQ, {"n": "0"}, id="300000000000000-0")).decode(),
+        (await fake_redis.xadd(DLQ, {"n": "1"})).decode(),
+    ]
+
+    resp = await client.post(DISCARD_URL, json={"entry_ids": ids}, headers=HEADERS)
+
+    assert resp.status_code == 200
+    assert resp.json() == {"discarded": ids, "not_found": []}
+    assert await fake_redis.xlen(DLQ) == 0
+
+
+def test_openapi_says_dead_lettered_at_may_be_null():
+    """The contract change (archiver#401): required, and nullable."""
+    schema = app.openapi()["components"]["schemas"]["DeadLetterOut"]
+    assert "dead_lettered_at" in schema["required"]
+    assert {"type": "null"} in schema["properties"]["dead_lettered_at"]["anyOf"]
+
+
 async def test_list_pages_with_limit_and_offset(client, fake_redis):
     for n in range(3):
         await fake_redis.xadd(DLQ, {"n": str(n)})

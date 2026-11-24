@@ -406,3 +406,29 @@ async def test_an_artifacts_entry_runs_through_the_artifacts_handler(fake_redis,
     [call] = warning.call_args_list
     assert call.args[0] == "Dropping outcome for a command this registry never issued"
     assert call.kwargs["extra"]["command_id"] == "never-issued"
+
+
+async def test_reprocess_settles_an_entry_past_year_9999(fake_redis, session_factory):
+    """archiver#401: a millisecond half ``datetime`` cannot hold no longer stops
+    the delete. The log line carries the raw id, and no time derived from it."""
+    entry_id = (
+        await fake_redis.xadd(
+            REVISIONS_DLQ,
+            _parked(_observed("01J0000000000000000000000A")),
+            id="300000000000000-0",
+        )
+    ).decode()
+
+    with (
+        patch.dict(dlq_triage._REPROCESSORS, {REVISIONS_DLQ: _spy(True, [])}),
+        patch.object(dlq_triage.logger, "info") as info,
+    ):
+        results = await reprocess_dead_letters(
+            fake_redis, REVISIONS_DLQ, [entry_id], session_factory=session_factory
+        )
+
+    assert results == (ReprocessResult(entry_id=entry_id, outcome="reprocessed", detail=None),)
+    assert await fake_redis.xlen(REVISIONS_DLQ) == 0
+    extra = info.call_args.kwargs["extra"]
+    assert extra["entry_id"] == entry_id
+    assert "dead_lettered_at" not in extra

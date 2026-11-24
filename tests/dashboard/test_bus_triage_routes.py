@@ -495,6 +495,30 @@ async def test_discard_deletes_the_entry(client, fake_redis):
     assert await fake_redis.xlen(DLQ) == 0
 
 
+async def _stuck(fake_redis) -> list[str]:
+    """archiver#401: an entry past year 9999, then a ``*`` one, which stays past it."""
+    first = (await fake_redis.xadd(DLQ, {"n": "0"}, id="300000000000000-0")).decode()
+    return [first, await _park(fake_redis)]
+
+
+async def test_a_stuck_queue_renders_every_entry_with_no_time(client, fake_redis):
+    """The page, not just the section: one such entry used to 500 the whole screen."""
+    ids = await _stuck(fake_redis)
+
+    r = await client.get(PAGE, headers=_HEADERS)
+
+    assert r.status_code == 200
+    for entry in ids:
+        assert "time past year 9999" in _entry_row(r.text, entry)
+
+
+async def test_a_stuck_queue_can_be_discarded(client, fake_redis):
+    for entry in await _stuck(fake_redis):
+        r = await client.post(f"{DLQ_URL}/{entry}/discard", headers=_HEADERS)
+        assert read_flash(r)["showFlash"]["level"] == "success"
+    assert await fake_redis.xlen(DLQ) == 0
+
+
 async def test_a_foreign_entry_can_still_be_discarded(client, fake_redis):
     """D4: discard follows the API's documented role decision; the confirm warns."""
     entry = await _park(fake_redis, group="replicator.revisions")
