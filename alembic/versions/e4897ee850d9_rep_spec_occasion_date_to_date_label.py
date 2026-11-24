@@ -36,7 +36,10 @@ places were checked and left alone:
 vocabulary. So any ``{source_revision.date_label}`` seen at downgrade was
 written either by this upgrade or under the code this revision ships with.
 Either way, the older code can only render it as ``{source_revision.date}``,
-and the rendered bytes are the same.
+and the rendered bytes are the same. That includes a document authored with
+``date_label`` after the upgrade and assigned since. Rewriting it is a frozen
+edit too, and the same #83 exception covers it for the same reason: no
+destination moves.
 """
 
 import logging
