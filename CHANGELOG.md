@@ -18,6 +18,16 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.48.0 (2026-11-24)
+
+[both] **A DLQ entry id past year 9999 no longer breaks listing or discard** (archiver#401). No migration. SDK 5.19.0.
+
+- **`DeadLetterOut.dead_lettered_at` is `datetime | null`** on `GET /tools/dead-letters/{dlq}`. Still required; null when the entry id's millisecond half is past 9999-12-31T23:59:59.999Z, which Redis accepts and `datetime` cannot hold. The `entry_id` is the way back to the journald line then. One such entry used to 500 the whole listing, and the Bus triage screen with it.
+- **Discard and reprocess settle such an entry.** Both computed the time for their log line before the `XDEL`, so the entry could not be removed through archiver. `Discarding dead letter` and `Reprocessed dead letter` no longer carry `dead_lettered_at`: their `entry_id` holds it.
+- **The queue sticks.** An auto id must exceed the stream's last id, and `XDEL` does not lower it, so every later dead letter on that queue is past 9999 too. Each lists with a null time and discards normally. Resetting the last id (`XSETID`) is broker's operation, not archiver's ([BUS_TRIAGE.md](docs/BUS_TRIAGE.md#an-id-past-year-9999)).
+- **SDK 5.19.0:** the generated `DeadLetterOut.dead_lettered_at` is `datetime.datetime | None`. A typed caller now needs a None check. No method changes. A 5.18 SDK parses a listing with no such entry as before; on one with, it raises a `TypeError` where the server used to 500.
+- Also in this release, with no contract path: the Bus triage screen shows "time past year 9999" for such an entry.
+
 ## v4.47.0 (2026-11-18)
 
 [service] **The authoring tools refuse a non-2xx fetch** (archiver#473). No migration. SDK unchanged (5.18.0): the regenerated client moves docstrings only (#473, #528); no type, method or status model changed.
@@ -313,7 +323,7 @@ Nothing dispatches on events yet: that's #369. Details: [docs/NOTIFICATION_COMPO
 [service] **co-core 0.32 → 0.37.1** (archiver#397), so **`info_item_primary_changed` keys on an occurrence** (archiver#394). Routes, schemas and `archiver-client` are unchanged; no SDK bump.
 
 - **The key.** On `info.changes`, `info_item_primary_changed` now keys on `info_item_id:new_info_source_id:occurred_at` (cannobserv#578). A re-bind of an earlier primary (a swap-back, `POST …/info-sources`, dashboard `bind-source`) gets a fresh key instead of repeating its first binding's. The payload and `schema_version` (1) are unchanged. The key is derived at publish, so outbox rows staged before the deploy take the new key too.
-- **Consumers.** An `info.watch-status` frame carrying 0.37's three new optional fields parses as before, and the cache reads none of them. On `content.artifacts` a capture outcome (cannobserv#571) now decodes and is acked as foreign; on 0.32 it was dead-lettered as undecodable. None can arrive until #380 issues captures ([BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md)).
+- **Consumers.** An `info.watch-status` frame carrying 0.37's three new optional fields parses as before, and the cache reads none of them. On `content.artifacts` a capture outcome (cannobserv#571) now decodes and is acked as foreign; on 0.32 it was dead-lettered as undecodable. None can arrive until #380 issues captures ([BUS_TRIAGE.md](docs/BUS_TRIAGE.md#an-id-past-year-9999)).
 - **Parser stack aligned with Processor's lock:** lxml 6.1.3, beautifulsoup4 4.15.0, soupsieve 2.10, pypdf 6.19.0. `co_core.pure.extract` is byte-identical 0.32.0 → 0.37.1. Preview fingerprints for all five production sources match their latest revisions on both locks.
 
 ## v4.30.0 (2026-10-17)

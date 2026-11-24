@@ -290,7 +290,7 @@ screen - and they are not verification the 8001 rule covers.
   is that prefix, parsed. An entry written before 0.19.1 has none of this; its
   `dead_lettered_at` (taken from the entry id) is the way back to the journald
   line (`Quarantining unusable message` / `Dead-lettering undecodable frame`),
-  while retention lasts.
+  while retention lasts (null past year 9999: [BUS_TRIAGE.md](BUS_TRIAGE.md#an-id-past-year-9999)).
 - **What the disposition is.** `handler_poison` (`InvalidFingerprintError`,
   `InvalidInfoSourceIdError` on revisions, `InvalidFactError` on watch-events) is deterministic producer data:
   discard it and file on the producer. `undecodable` with `decodes: true` is

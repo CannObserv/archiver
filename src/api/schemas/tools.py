@@ -330,9 +330,10 @@ class DeadLetterOut(BaseModel):
     """One entry of a dead-letter queue, described for triage."""
 
     entry_id: str = Field(description="The entry's stream id in the DLQ; what discard takes.")
-    dead_lettered_at: datetime = Field(
+    dead_lettered_at: datetime | None = Field(
         description="When the entry was dead-lettered, from its stream id. On an entry with "
-        "no provenance, the way back to the journald line that says why."
+        "no provenance, the way back to the journald line that says why. Null when the id's "
+        "millisecond half is past year 9999 (archiver#401); `entry_id` is the way back then."
     )
     fields: dict[str, str] = Field(
         description="The raw entry: the wire fields `dead_letter` copied, plus its `dlq.*` "

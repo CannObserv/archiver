@@ -128,6 +128,73 @@ async def test_list_dates_each_entry_from_its_stream_id(fake_redis):
     assert entry.dead_lettered_at == datetime(2024, 9, 24, 12, 0, 0, 123000, tzinfo=UTC)
 
 
+# A millisecond half past year 9999 (archiver#401): ``datetime`` cannot hold it,
+# though Redis accepts it. ``XADD *`` must exceed the stream's last id, so after one
+# such entry every later dead letter on the queue is past 9999 too: the queue sticks.
+FAR_FUTURE_ID = "300000000000000-0"
+
+
+async def _stuck_queue(fake_redis) -> list[str]:
+    """Two entries past year 9999: one written with an explicit id, then one ``*``."""
+    first = (await fake_redis.xadd(REVISIONS_DLQ, _observed_frame(), id=FAR_FUTURE_ID)).decode()
+    second = (await fake_redis.xadd(REVISIONS_DLQ, _observed_frame())).decode()
+    return [first, second]
+
+
+async def test_auto_ids_after_a_far_future_id_stay_past_year_9999(fake_redis):
+    """Why the queue sticks: fakeredis follows Redis's rule that ``*`` exceeds the last id."""
+    assert await _stuck_queue(fake_redis) == [FAR_FUTURE_ID, "300000000000000-1"]
+
+
+def test_an_id_past_year_9999_has_no_time():
+    assert dlq_triage._entry_time(FAR_FUTURE_ID) is None
+
+
+def test_the_last_representable_millisecond_still_has_a_time():
+    assert dlq_triage._entry_time("253402300799999-0") == datetime(
+        9999, 12, 31, 23, 59, 59, 999000, tzinfo=UTC
+    )
+    assert dlq_triage._entry_time("253402300800000-0") is None
+
+
+def test_a_uint64_millisecond_half_has_no_time():
+    """The largest id ``is_exact_stream_id`` admits: past what ``fromtimestamp`` takes."""
+    assert dlq_triage._entry_time(f"{UINT64_MAX}-0") is None
+
+
+async def test_list_shows_every_entry_on_a_stuck_queue_with_no_time(fake_redis):
+    ids = await _stuck_queue(fake_redis)
+
+    entries, _ = await list_dead_letters(fake_redis, REVISIONS_DLQ, limit=10, offset=0)
+
+    assert [e.entry_id for e in entries] == ids
+    assert [e.dead_lettered_at for e in entries] == [None, None]
+    assert all(e.decodes for e in entries)
+
+
+async def test_discard_empties_a_stuck_queue(fake_redis):
+    """Discard succeeds end to end; the queue's last id stays (``XSETID`` is broker's)."""
+    ids = await _stuck_queue(fake_redis)
+
+    result = await discard_dead_letters(fake_redis, REVISIONS_DLQ, ids)
+
+    assert result.discarded == tuple(ids)
+    assert result.not_found == ()
+    assert await fake_redis.xlen(REVISIONS_DLQ) == 0
+
+
+async def test_discard_logs_the_raw_id_and_no_time(fake_redis):
+    """The id is the record; no time is derived from it before the delete."""
+    [entry_id, _] = await _stuck_queue(fake_redis)
+
+    with patch.object(dlq_triage.logger, "info") as info:
+        await discard_dead_letters(fake_redis, REVISIONS_DLQ, [entry_id])
+
+    extra = info.call_args.kwargs["extra"]
+    assert extra["entry_id"] == entry_id
+    assert "dead_lettered_at" not in extra
+
+
 async def test_list_reports_why_an_undecodable_entry_will_not_decode(fake_redis):
     """The version-skew case: an ``event_type`` this co-core does not know."""
     frame = {**_observed_frame(), "event_type": "source_revision_observed_v9"}
