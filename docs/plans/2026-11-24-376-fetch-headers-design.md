@@ -93,7 +93,10 @@ value, its kind and its spelling**, so each name lands in `fetch_headers` or
 `fetch_credential_headers`, never both. Lowest to highest:
 
 1. **The fetcher's defaults** (Replicator's `FetchContent`; "issuer wins").
-2. **Watcher's pinned `user-agent: watcher/0.1.0`.**
+2. **Watcher's pinned `user-agent: watcher/0.1.0`.** A policy `user-agent` replaces it by a
+   case-insensitive match. A case-sensitive replace would send `user-agent` and `User-Agent`
+   together, which `FetchContent` refuses (#283), closing every fetch of the source
+   `invalid_request_options`.
 3. **The Domain's entries** (by the source's `domain_name`; a host with no row contributes
    nothing).
 4. **The InfoSource's entries.**
@@ -295,7 +298,9 @@ The build also changes these living docs, and none of them changes now:
 > **What changes from the merge you planned:** Archiver resolves Domain < InfoSource and
 > announces one disjoint pair per source, so you merge one announced level, not two:
 > 1. fetcher defaults < your pinned UA < the announced maps < your validators;
-> 2. an announced `user-agent` replaces your pin (that's the #376 body's exception), and
+> 2. an announced `user-agent` replaces your pin, matched case-insensitively (an operator
+>    types `User-Agent`; both spellings together are refused by `FetchContent`, #283). That's
+>    the #376 body's exception, and
 >    Archiver treats the change as a fingerprint discontinuity on its side;
 > 3. copy `fetch_credential_headers` to `credential_headers` unchanged. Policy never names a
 >    validator, and a name is never in both maps.
