@@ -515,18 +515,18 @@ def main(argv: list[str] | None = None, *, environ: Mapping[str, str] = os.envir
         if not (args.into or args.download_only):
             print("say where: --into DATABASE or --download-only DIR", file=sys.stderr)
             return 2
-        if args.into:
-            assert_empty(args.into, run_as=args.run_as, runner=subprocess.run)
-            # Before the fetch: a client newer than the target fails in
-            # seconds, not after the download (#509).
-            target = target_major(args.into, run_as=args.run_as, runner=subprocess.run)
-            check_client(client_major(args.into, run_as=args.run_as, runner=subprocess.run), target)
-        key = args.object or latest_key(client, bucket, args.prefix)
         if args.download_only:
+            key = args.object or latest_key(client, bucket, args.prefix)
             fetched = fetch(client, bucket, key, args.download_only, runner=subprocess.run)
             print(f"verified: {fetched.path}")
             print("archive:", *_fields(vars(fetched.toc), ("pg_dump_version", "server_version")))
             return 0
+        assert_empty(args.into, run_as=args.run_as, runner=subprocess.run)
+        # Before the fetch: a client newer than the target fails in seconds,
+        # not after the download (#509).
+        target = target_major(args.into, run_as=args.run_as, runner=subprocess.run)
+        check_client(client_major(args.into, run_as=args.run_as, runner=subprocess.run), target)
+        key = args.object or latest_key(client, bucket, args.prefix)
         with tempfile.TemporaryDirectory(prefix="archiver-restore-") as work:
             fetched = fetch(client, bucket, key, Path(work), runner=subprocess.run)
             check_compatible(fetched.toc, target)
