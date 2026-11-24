@@ -206,7 +206,7 @@ class TestFetchIsPrivate:
     def test_the_directory_and_the_dump_are_private(self, client, bucket, tmp_path) -> None:
         _ship(bucket, f"{SRC}/x.dump")
         dest = tmp_path / "fetched"
-        path = restore.fetch(client, BUCKET, f"{SRC}/x.dump", dest, runner=FakePg())
+        path = restore.fetch(client, BUCKET, f"{SRC}/x.dump", dest, runner=FakePg()).path
         assert stat.S_IMODE(dest.stat().st_mode) == 0o700
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
