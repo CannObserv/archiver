@@ -145,3 +145,9 @@ def test_a_killed_parent_takes_the_server_with_it(tmp_path: Path) -> None:
     finally:
         if child.poll() is None:
             child.kill()
+        # CR 4: should PDEATHSIG fail, the server this test reports must not
+        # outlive it, holding archiver_test connections into later runs.
+        if report.exists() and report.read_text().strip():
+            server_pid = int(report.read_text().split()[0])
+            if _pid_alive(server_pid):
+                os.kill(server_pid, signal.SIGKILL)
