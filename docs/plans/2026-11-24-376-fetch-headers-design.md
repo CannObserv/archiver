@@ -153,7 +153,7 @@ failure later:
     `docs/contracts/content-fetch-issuer-reference.md`): the hop-by-hop `connection`,
     `keep-alive`, `te`, `trailer`, `transfer-encoding` and `upgrade`; the derived `host`
     and `content-length`; and any `proxy-*` name.
-  - `user-agent` is allowed as a plain entry only. co-core refuses it as a credential.
+- **`user-agent` is a plain entry only.** co-core refuses it as a credential.
 - **Grammar:** a name is an RFC 9110 token. A value has no CR, LF or NUL (co-core's C4
   guard).
 - **Bounds.** Replicator refuses more than 32 headers, or more than 8,192 bytes of them,
