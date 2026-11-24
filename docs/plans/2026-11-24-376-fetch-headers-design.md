@@ -331,6 +331,11 @@ The build also changes these living docs, and none of them changes now:
 - **The UA discontinuity is acknowledged and logged, not recorded durably** on the
   revision history. That's a follow-up, shared with #379.
 
+- **Plain headers follow httpx on a redirect:** every header except `Authorization` goes to
+  the next host, so a Domain-scoped plain header can reach another host. That's harmless
+  only because plain values are public-equivalent (D4). Credentials are scoped per hop by
+  Replicator (C2).
+
 ## Open questions
 
 None block the design. The build decides two things:
