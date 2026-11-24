@@ -41,6 +41,13 @@ dev = [
     "ruff>=0.16.8,<0.17",
     "fakeredis>=2.20",
 ]
+# The real-browser tier (archiver#546): `uv run --group browser pytest -m browser`
+# after `bash scripts/install_browser.sh`. Its own group, never dev and never a
+# default group: deploy.sh syncs `--no-dev`, which drops dev alone. Capped below
+# the next minor because each Playwright minor pins a new Chromium build.
+browser = [
+    "playwright>=1.65.2,<1.66",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -57,6 +64,7 @@ filterwarnings = [
 ]
 markers = [
     "integration: cross-component flow requiring TEST_DATABASE_URL + fakeredis; excluded from pre-ship via `-m \"not integration\"`, exercised separately in CI",
+    "browser: real Chromium against a loopback server (tests/browser/, archiver#546); collected only when -m selects it, so never in pre-ship or CI's default steps; run `uv run --group browser pytest -m browser` after `bash scripts/install_browser.sh`",
 ]
 
 [tool.ruff]
