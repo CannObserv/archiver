@@ -23,6 +23,7 @@ The other parts of this reference, under the same living-doc rule:
   The hub's action routes are [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 - [NOTIFICATIONS.md](NOTIFICATIONS.md) - the Notifications page, with the model, API and
   import behind it.
+- [BROWSER_TESTS.md](BROWSER_TESTS.md) - the real-Chromium test tier: layout, focus, taps.
 
 > **AGENTS.md enforcement:** a Jinja2 template change, a new or changed
 > dashboard route, or a new Alpine.js component must update the doc it touches
@@ -277,7 +278,8 @@ never acts on the control under it - there is no scrim. Closed, the drawer is `v
 of the Tab order ([STYLE.md](STYLE.md) § Layout). State lives only on the toggle
 and drawer, never on `<body>`, so a boosted navigation lands on the server's
 closed render. Wider than 640 px the toggle is `display: none` and `data-open`
-is ignored.
+is ignored. Checked in Chromium by `tests/browser/test_sidebar_drawer.py`
+([BROWSER_TESTS.md](BROWSER_TESTS.md)).
 
 ### `htmx-errors.js`
 

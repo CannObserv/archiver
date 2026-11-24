@@ -48,6 +48,13 @@ in `tests/conftest.py`, which guards pytest but not a hand-run server.
 > **`archiver_dev` now exists and `ARCHIVER_DEV_DATABASE_URL` is set** (#193
 > D5), so the fallback is no longer the normal case on this host.
 
+## The browser tier's Chromium
+
+`bash scripts/install_browser.sh` installs the headless shell the lock's
+`playwright` names, once per host, into `~/.cache/ms-playwright/` (or
+`PLAYWRIGHT_BROWSERS_PATH`); a rerun downloads nothing. CI adds `--with-deps`.
+Run, gate and build: [BROWSER_TESTS.md](BROWSER_TESTS.md).
+
 ## Environment variable reference
 
 **Key variables:**

@@ -341,7 +341,8 @@ alembic/                       Migration root (information schema scoped within 
 tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
                                (HTTP + DB + bus); tests/api/ for single-route HTTP behavior;
                                tests/core/ for domain logic; tests/dashboard/ for the HTMX UI;
-                               tests/js/ for the dashboard JS modules; tests/scripts/ for the
+                               tests/js/ for the dashboard JS modules; tests/browser/ for
+                               real Chromium (BROWSER_TESTS.md); tests/scripts/ for the
                                shell/Python helpers under scripts/ (incl.
                                test_db_guard_parity.py, which keeps dev_server.sh in step
                                with db_safety.py);
@@ -389,6 +390,7 @@ scripts/                       deploy.sh (build a release from a pushed main com
                                audit_lock.sh (report-only uv audit of both locks,
                                runtime and dev apart; archiver#420, DEPLOYMENT.md) +
                                pre-ship.sh (ship gate; SKILLS.md) +
+                               install_browser.sh (BROWSER_TESTS.md) +
                                lib/env.sh (their env allowlist; DEPLOYMENT.md) +
                                env-value.sh (one .env name, as data; #466)
 deploy/                        README.md (install instructions) + systemd units, all
