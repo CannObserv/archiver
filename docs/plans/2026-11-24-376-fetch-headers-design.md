@@ -125,7 +125,7 @@ level) does two things:
 
 Archiver has no discontinuity record to write to (correction 6). The durable marker on the
 source's revision history is shared with #379, whose render-mode change is the same kind of
-event, and is filed as a follow-up rather than designed here.
+event. It is recorded as a follow-up for this issue's build and #379, not designed here.
 
 ### D4. Validation on save
 
