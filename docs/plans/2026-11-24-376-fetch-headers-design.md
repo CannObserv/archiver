@@ -97,8 +97,8 @@ value, its kind and its spelling**, so each name lands in `fetch_headers` or
    case-insensitive match. A case-sensitive replace would send `user-agent` and `User-Agent`
    together, which `FetchContent` refuses (#283), closing every fetch of the source
    `invalid_request_options`.
-3. **The Domain's entries** (by the source's `domain_name`; a host with no row contributes
-   nothing).
+3. **The Domain's entries** (by the source's `domain_name`). A host with no row, or a source
+   whose `domain_name` is `NULL`, contributes nothing at this level.
 4. **The InfoSource's entries.**
 5. **Watcher's replayed conditional-GET validators.** Policy can never name them (D4), so
    they never collide with a policy entry.
