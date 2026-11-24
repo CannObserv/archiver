@@ -17,13 +17,14 @@ uv run --group browser pytest tests/browser -m browser
 
 Without the `browser` group the run fails on `tests/browser/conftest.py`'s
 import, never a skip. `-m browser` alone works too but collects the whole suite
-first. `uv run` syncs inexactly, so later plain `uv run`s keep the group; a bare
+first; `pytest tests/browser/test_server.py` runs one file. `uv run` syncs inexactly, so later plain `uv run`s keep the group; a bare
 `uv sync` removes it.
 
 ## How it is gated
 
-- **Collected only when `-m` selects `browser`** (`pytest_ignore_collect` in
-  `tests/conftest.py`). Not by `addopts`: a command-line `-m` replaces that
+- **Collected only when `-m` selects `browser`, or a command-line path names
+  something under `tests/browser/`** (`pytest_ignore_collect` in
+  `tests/conftest.py`; pytest never consults it for a named file). Not by `addopts`: a command-line `-m` replaces that
   expression, so CI's `-m "not integration"` would bring the tier back
   (power-map #304). A run that never asked never imports Playwright.
 - **Pre-ship never runs it,** like `integration`. Run it by hand when a change

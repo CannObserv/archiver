@@ -177,7 +177,10 @@ os.environ.pop("ARCHIVER_DEV_NOTIFY_CUTOVER_AT", None)
 
 
 # ---------------------------------------------------------------------------
-# The browser tier (archiver#546): collected only when ``-m`` selects it.
+# The browser tier (archiver#546): collected only when ``-m`` selects it, or
+# when a command-line path names something under ``tests/browser/`` (CR 3:
+# pytest never consults this hook for an explicit file, so a named directory
+# follows suit rather than silently collecting nothing).
 #
 # Not by ``addopts``: a command-line ``-m`` replaces that expression, so CI's
 # ``-m "not integration"`` would bring the tier back (power-map #304). Ignoring
@@ -195,11 +198,26 @@ def selects_browser(markexpr: str) -> bool:
     return bool(_BROWSER.search(_NOT_BROWSER.sub("", markexpr)))
 
 
+def in_browser_tier(path: Path) -> bool:
+    """True for ``tests/browser/`` and anything under it, compared resolved (CR 2)."""
+    resolved = path.resolve()
+    return resolved == BROWSER_DIR or BROWSER_DIR in resolved.parents
+
+
+def names_browser_path(args: list[str], invocation_dir: Path) -> bool:
+    """True when a command-line path (``file::node`` ids too) lies in the tier."""
+    return any(in_browser_tier(invocation_dir / arg.split("::")[0]) for arg in args)
+
+
 def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
-    """Leave ``tests/browser/`` uncollected unless the run's ``-m`` selects it."""
-    if collection_path != BROWSER_DIR and BROWSER_DIR not in collection_path.parents:
+    """Leave ``tests/browser/`` uncollected unless the run asks for it."""
+    if not in_browser_tier(collection_path):
         return None
-    return True if not selects_browser(config.option.markexpr or "") else None
+    if selects_browser(config.option.markexpr or ""):
+        return None
+    if names_browser_path(config.args, config.invocation_params.dir):
+        return None
+    return True
 
 
 def _run_alembic_upgrade() -> None:

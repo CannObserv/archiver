@@ -25,7 +25,7 @@ from playwright.async_api import Browser, Page, async_playwright
 from sqlalchemy import text
 
 from tests.browser.server import LiveServer, start_server
-from tests.conftest import BROWSER_DIR
+from tests.conftest import in_browser_tier
 
 #: The identity the exe.dev proxy would inject; the dashboard trusts it (#517).
 USER_ID = "browser-tier"
@@ -43,7 +43,7 @@ DESKTOP = 1280
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Mark every test under ``tests/browser/`` before ``-m`` deselects by marker."""
     for item in items:
-        if BROWSER_DIR in item.path.parents:
+        if in_browser_tier(item.path):
             item.add_marker(pytest.mark.browser)
 
 

@@ -64,7 +64,7 @@ filterwarnings = [
 ]
 markers = [
     "integration: cross-component flow requiring TEST_DATABASE_URL + fakeredis; excluded from pre-ship via `-m \"not integration\"`, exercised separately in CI",
-    "browser: real Chromium against a loopback server (tests/browser/, archiver#546); collected only when -m selects it, so never in pre-ship or CI's default steps; run `uv run --group browser pytest -m browser` after `bash scripts/install_browser.sh`",
+    "browser: real Chromium against a loopback server (tests/browser/, archiver#546); collected only when -m selects it or a path under tests/browser/ is named, so never in pre-ship or CI's default steps; run `uv run --group browser pytest -m browser` after `bash scripts/install_browser.sh`",
 ]
 
 [tool.ruff]
