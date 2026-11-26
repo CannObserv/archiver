@@ -11,9 +11,10 @@ Since v2.0 every non-2xx response surfaces as an `InformationError` subclass
 carrying `.kind`, `.message`, `.errors`, `.data` (the unified error envelope).
 v0.x clients targeted the now-retired InfoSpec model and are not compatible.
 
-## Install (path dependency, prototype phase)
+## Install
 
-In the consuming repo's `pyproject.toml`:
+Off this VM, pin a release tag. The repo is public, so no credential is needed, and
+`uv.lock` pins the tag's commit:
 
 ```toml
 [project]
@@ -22,12 +23,46 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-archiver-client = { path = "/home/exedev/archiver/clients/python", editable = true }
+archiver-client = { git = "https://github.com/CannObserv/archiver", tag = "sdk-v5.19.0", subdirectory = "clients/python" }
 ```
 
-(No cohort service depends on it: Watcher and Replicator reach Archiver over
-the bus only, archiver#513. A caller off this VM needs a published SDK, which
-archiver#409 tracks.)
+On this VM, a path dependency follows the checkout instead:
+`archiver-client = { path = "/home/exedev/archiver/clients/python", editable = true }`.
+No cohort service depends on the SDK: Watcher and Replicator reach Archiver over the
+bus only (archiver#513). Publishing to a package index waits until the service
+relocates off-VM.
+
+## Releases and tags (archiver#409)
+
+Each SDK version is released as an annotated git tag, `sdk-v<version>`, where the
+version is `[project].version` in `pyproject.toml`. The `sdk-` prefix keeps it apart
+from the service's `v<version>`, which is versioned independently.
+
+- **The tag marks the commit on `main`'s first-parent line where `pyproject.toml`'s
+  version changes, which is the PR's merge commit.** For example, `sdk-v5.19.0` marks
+  `dce5e3f9`, the merge of #549, not `dfe19ca2`, the commit inside the PR that bumped
+  the version. The merge is the commit CI verified. It is also the line `deploy.sh`
+  deploys, and it includes every fix the PR made after its bump commit.
+- **Tagging is a release step.** Once a PR that bumps the version merges, run this
+  from the main checkout. The operator approves the push, because a tag on a public
+  repo is outward-facing:
+
+  ```bash
+  python3 scripts/sdk_tag.py tag          # annotate; prints the push line
+  python3 scripts/sdk_tag.py tag --push   # annotate and push
+  ```
+
+  The script reads `origin/main` and tags every untagged release since `FLOOR`. It
+  refuses a tag that already exists on another commit.
+- **It can't be skipped.** CI's `changelog` job runs `sdk_tag.py check` against each
+  PR's base. It fails while any release since `FLOOR` lacks an annotated tag on
+  `origin` that marks the right commit. A bump PR and its merge push stay green,
+  because their base is the previous release. Every PR after that is red until the
+  tag is pushed.
+- **A tag is never moved or deleted.** Consumers' `uv.lock` files pin its commit.
+  If a tag is wrong, release a new version, tag it, and raise `FLOOR` in
+  `scripts/sdk_tag.py` past the bad one, with a note. Versions before 5.19.0 are
+  not tagged.
 
 ## Usage
 

@@ -15,6 +15,12 @@ Tag each entry `[service]`, `[sdk]`, or `[both]` per the format header in
 `CHANGELOG.md`. The SDK README links here; do not maintain a second
 changelog there. On a PR, the `no-changelog` label opts out.
 
+**A PR that bumps `clients/python/pyproject.toml`'s version names the tag in its
+post-merge host steps:** `python3 scripts/sdk_tag.py tag --push` from the main
+checkout, once the operator approves the push (archiver#409). Its merge commit gets
+`sdk-v<version>`. Until that tag is on `origin`, the `changelog` job fails every later
+PR. `clients/python/README.md` § Releases and tags.
+
 ## Logging - plain-text `ExecStartPre` lines in journald
 
 Entry points only: call `configure_logging()` once. `ExecStartPre` steps in
@@ -366,7 +372,9 @@ The checks behind every rule above, by file (moved from the layout tree in
                                alembic/versions/, src/api/routes/,
                                src/api/schemas/, or clients/python/ must touch
                                CHANGELOG.md — path-triggered, not commit-type;
-                               opt out via `no-changelog` PR label).
+                               opt out via `no-changelog` PR label; then
+                               scripts/sdk_tag.py check: every SDK release on
+                               the base has its sdk-v tag, #409).
                                Triggers on push/PR to main.
                                audit.yml — scripts/audit_lock.sh on push, PR, weekly
                                and dispatch; report-only, outside deploy.sh's gate
@@ -374,7 +382,7 @@ The checks behind every rule above, by file (moved from the layout tree in
 .github/dependabot.yml         Weekly github-actions bumps of the workflows' SHA pins
                                (#192); see DEPLOYMENT.md "Dependabot"
 .pre-commit-config.yaml        ruff check + ruff format + standard pre-commit-hooks
-                               + test_check_changelog.sh (pre-commit stage), plus a pre-push guard
+                               + test_check_changelog.sh (pre-push stage), plus a pre-push guard
                                (scripts/check_changelog_on_push.sh) that mirrors
                                the CI changelog check before the push leaves the
                                clone. Run `uv run pre-commit install` once per

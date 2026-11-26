@@ -16,7 +16,9 @@ with the same path regex.
 **Versioning:** service and SDK versions are independent. Service version bumps
 with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
-service-only patch does not require an SDK bump.
+service-only patch does not require an SDK bump. Each SDK version from 5.19.0 is an
+annotated git tag `sdk-v<version>` that off-VM consumers pin (archiver#409,
+`clients/python/README.md` § Releases and tags).
 
 ## v4.49.0 (2026-11-24)
 
@@ -26,6 +28,7 @@ service-only patch does not require an SDK bump.
 - **Migration `e4897ee850d9`** rewrites the exact token `{source_revision.date}` to `{source_revision.date_label}` in every RepSpec's `document.path_template`, draft or assigned, and stamps `updated_at`. `date_segment` and `datetime_time_segment` are untouched, as is every other key of the document. For assigned (frozen) documents, this is the second recorded exception to #83's freeze (the operator granted it on 2026-11-17), with the same shape as `70f32f641751`: the rendered output is byte-identical. #164's count: it rewrites **0** RepSpecs: 0 of production's 1 (which is assigned) and 0 of `archiver_dev`'s 3 (all assigned) [measured 2026-11-24]. Downgrade reverses the rewrite.
 - `[sdk]` Test only: `clients/python/tests/test_rep_spec_methods.py`'s mocked fixture uses the new key. No SDK code, type or method changed, so `archiver-client` stays at 5.19.0 and this is not an SDK release. The OpenAPI snapshot doesn't name the occasion vocabulary: only its `info.version` moves to 4.49.0, and `generated/` regenerates with no diff (`client-drift`).
 - Also in this release, with no contract path: the RepSpec create form's hint lists `date_label`.
+- `[sdk]` Docs and process only, after this release (archiver#409): **SDK releases are tagged `sdk-v<version>`**, so a consumer off this VM can pin one: `archiver-client = { git = "https://github.com/CannObserv/archiver", tag = "sdk-v5.19.0", subdirectory = "clients/python" }`. A tag is annotated and marks the commit on `main`'s first-parent line that set the version, which is the PR's merge commit (`sdk-v5.19.0` marks `dce5e3f9`). It is never moved. `scripts/sdk_tag.py tag --push` makes it after a bump merges. CI's `changelog` job then fails every later PR until it exists. `clients/python/README.md` documents the install and the convention. No SDK code, type or method changed, so `archiver-client` stays at 5.19.0, and nothing deploys.
 
 ## v4.48.0 (2026-11-24)
 

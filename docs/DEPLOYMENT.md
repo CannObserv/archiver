@@ -56,8 +56,8 @@ refuses a bare one ([SKILLS.md](SKILLS.md) § Ship gate).
 
 **A commit from before releases is refused**, before CI is asked (CR 14): one whose
 `deploy/*.service` runs anywhere but `/srv/archiver/live`, or that has no `src/core/build.py`.
-Its units would put production on the checkout, and its `/health` cannot name a release, so
-verification would always fail after the checkout had served. So no rollback reaches past the
+Its units would serve the checkout, and its `/health` names no release, so verification
+would fail after the checkout had served. So no rollback reaches past the
 cutover: for older code, revert it on `main` and deploy that.
 
 **So is a commit whose units name a `User=` or `Group=` this host lacks** (#339), read from
@@ -83,14 +83,14 @@ In order, each step refusing before anything switches:
    a worktree's `dev_server.sh` that never merged: downgrade it, or the rehearsal rehearses
    nothing. **A rehearsal that cannot read `archiver_dev` at all (unreachable,
    refused by `db_safety`, crashed) refuses the production deploy**, exit 1, nothing switched:
-   bring `archiver_dev` back or fix `dev.env`. A production fix does not wait on it through
-   a flag, by design: the rehearsal is what proves the migration first.
+   bring `archiver_dev` back or fix `dev.env`. No flag skips it: the rehearsal proves the
+   migration first.
 4. **Migrate** `archiver` the same way, with `ARCHIVER_ALLOW_PRODUCTION_DB=1`; skipped when
    the schema is `ahead` (a rollback). Migrations are **expand-only** (D3): the old release
    runs on the new schema between this step and the switch, and after any rollback. A
    migration waits at most 5 s for any lock (`lock_timeout`, #348), then fails and nothing
-   switches: an open reader stalls the API's queries (queued behind the waiting migration)
-   for at most 5 s, not until the reader finishes. After each database's
+   switches, so an open reader stalls the API's queries (queued behind it) 5 s at most,
+   not until it finishes. After each database's
    migration, rehearsal and live, `python -m src.core.reader_grants` re-applies the read
    role's grants ([§ Reading production](#reading-production-archiver348)); a failure
    there switches nothing either. A rollback leaves the newer build's grants in place: the
@@ -107,6 +107,11 @@ In order, each step refusing before anything switches:
 
 Then host configs under `deploy/` are compared with their installed copies (a difference is a
 note, never an install), and releases beyond the 5 newest are pruned, never the linked one.
+
+**A merge that bumps the SDK version is also tagged** (#409), deploy or not:
+`python3 scripts/sdk_tag.py tag --push` from the main checkout, on the operator's yes. CI
+fails every later PR until it is ([clients/python/README.md](../clients/python/README.md)
+§ Releases and tags).
 
 | Variable | Default | What |
 |---|---|---|
@@ -206,8 +211,6 @@ module imports, and `/home/exedev` is out of sight.
 
 Seven operator-present steps after the PR merges, each one undone before the next:
 [plans/2026-10-10-339-service-user-cutover.md](plans/2026-10-10-339-service-user-cutover.md).
-The user, a deploy, the file closed, a rollback proved, the agents' role, production
-closed to everyone but its owner, then `archiver`'s password rotated.
 
 ## Reading production (archiver#348)
 
@@ -240,13 +243,12 @@ without the role.
 
 ## cannobserv substrate
 
-**cannobserv substrate (archiver#72/#75).** `co-core` + `co-core-aio` (the shared
+`co-core` + `co-core-aio` (archiver#72/#75; the shared
 Cannabis Observer core library — pure models/utils + async drivers) are declared
 as plain floors and resolved from a local **wheelhouse**
 (`./.wheelhouse`, gitignored) via `[tool.uv] find-links`, mirrored from the private
-GCS index `gs://co-gcs-pypi` by `scripts/sync_wheelhouse.py`. This is Phase 0 of the
-cluster-integration strategy — the precedent Watcher/Replicator follow. Populate the
-wheelhouse before `uv sync`/`uv run`:
+GCS index `gs://co-gcs-pypi` by `scripts/sync_wheelhouse.py`. Populate the
+wheelhouse before `uv sync`/`uv run` (AGENTS.md § Environment & Tooling).
 
 ## Wheelhouse reproducibility
 
