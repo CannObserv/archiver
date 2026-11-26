@@ -141,7 +141,7 @@ def check(ref: str) -> int:
         "sdk_tag: tag an untagged release from the main checkout with "
         "`python3 scripts/sdk_tag.py tag --push` (the operator approves the push). "
         "A wrong tag is never moved: release a new version, then raise FLOOR "
-        "(docs/DEPLOYMENT.md § Releases).",
+        "(clients/python/README.md § Releases and tags).",
         file=sys.stderr,
     )
     return 1

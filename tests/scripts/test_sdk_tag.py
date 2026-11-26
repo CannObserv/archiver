@@ -170,6 +170,7 @@ def test_check_fails_on_an_untagged_release_and_names_the_fix(repo: Path) -> Non
     assert result.returncode == 1
     assert f"sdk-v{FLOOR}" in result.stderr
     assert "scripts/sdk_tag.py tag --push" in result.stderr
+    assert "clients/python/README.md § Releases and tags" in result.stderr  # CR 2
 
 
 def test_check_passes_once_tagged(repo: Path) -> None:
