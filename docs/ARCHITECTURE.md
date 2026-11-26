@@ -372,15 +372,13 @@ scripts/                       deploy.sh (build a release from a pushed main com
                                check_client_drift.py (regen vendored clients from
                                committed OpenAPI snapshots; diff vs generated/;
                                CI gate, see client-drift job) +
-                               check_changelog_on_push.sh (pre-push guard;
-                               wired via .pre-commit-config.yaml) +
-                               check_changelog_lib.sh (the shared trigger-path
-                               predicate; sourced by the guard) +
-                               test_check_changelog.sh (its unit tests; runs as a
-                               pre-commit hook) +
-                               check_version_lockstep.py (CI lint job: pyproject
-                               [project].version must equal the newest CHANGELOG
-                               `## vX.Y.Z` heading — #85 silent drift) +
+                               check_changelog_on_push.sh (pre-push guard) +
+                               check_changelog_lib.sh (its trigger-path predicate) +
+                               test_check_changelog.sh (its tests; pre-push too) +
+                               check_version_lockstep.py (CI lint: pyproject
+                               version = newest CHANGELOG heading; #85) +
+                               sdk_tag.py (sdk-v<version> tags, CI-gated;
+                               #409, clients/python/README.md) +
                                check_redis_floor.sh (archiver.service ExecStartPre:
                                ≥7.0 broker floor + warn-only live-maxmemory check,
                                each probe bounded by ARCHIVER_REDIS_FLOOR_TIMEOUT) +
