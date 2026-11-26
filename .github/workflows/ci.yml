@@ -336,3 +336,24 @@ jobs:
             fi
           fi
           echo "changelog check OK"
+
+      # Every archiver-client release on the base carries its annotated
+      # sdk-v<version> tag on origin, at the first-parent commit that set it
+      # (archiver#409). The base, not this run's head: a bump PR and its merge
+      # push stay green, and every later PR is red until the tag is pushed.
+      # Stdlib python3 (3.12 on ubuntu-24.04); this job's full history is what
+      # finds each release, ls-remote is what a consumer's uv sees.
+      - name: every SDK release on the base is tagged
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          base="$PR_BASE_SHA"
+          [[ "$EVENT_NAME" == "pull_request" ]] || base="$PUSH_BEFORE_SHA"
+          if [[ -z "$base" || "$base" == 0000000000000000000000000000000000000000 ]]; then
+            echo "no base SHA; skipping"
+            exit 0
+          fi
+          python3 scripts/sdk_tag.py check "$base"
