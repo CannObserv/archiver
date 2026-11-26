@@ -45,7 +45,7 @@ FLOOR = "5.19.0"
 
 
 class GitError(Exception):
-    """A git command failed."""
+    """A git command failed, or what it returned could not be read: exit 2."""
 
 
 @dataclass(frozen=True)
@@ -69,8 +69,11 @@ def git(*args: str, check: bool = True) -> str:
     return result.stdout.strip()
 
 
-def _key(version: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in version.split("."))
+def _key(version: str, commit: str) -> tuple[int, ...]:
+    try:
+        return tuple(int(part) for part in version.split("."))
+    except ValueError as e:
+        raise GitError(f"{commit[:12]}: SDK version {version!r} is not X.Y.Z (CR 4)") from e
 
 
 def version_at(rev: str) -> str | None:
@@ -78,7 +81,10 @@ def version_at(rev: str) -> str | None:
     result = subprocess.run(["git", "show", f"{rev}:{PYPROJECT}"], text=True, capture_output=True)
     if result.returncode != 0:
         return None
-    return tomllib.loads(result.stdout).get("project", {}).get("version")
+    try:
+        return tomllib.loads(result.stdout).get("project", {}).get("version")
+    except tomllib.TOMLDecodeError as e:
+        raise GitError(f"{rev[:12]}: {PYPROJECT} is not valid TOML: {e} (CR 4)") from e
 
 
 def releases(ref: str, floor: str = FLOOR) -> list[Release]:
@@ -96,7 +102,7 @@ def releases(ref: str, floor: str = FLOOR) -> list[Release]:
         version = version_at(commit)
         if version is None or version in found or version == version_at(f"{commit}^1"):
             continue
-        if _key(version) >= _key(floor):
+        if _key(version, commit) >= _key(floor, "FLOOR"):
             found[version] = Release(version, commit)
     return list(found.values())
 

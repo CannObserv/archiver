@@ -250,3 +250,17 @@ def test_check_refuses_a_shallow_clone(repo: Path, tmp_path: Path) -> None:
     result = run(shallow, "check", "origin/main")
     assert result.returncode == 2
     assert "shallow" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "content",
+    [_pyproject("5.20.0rc1"), "[project\nversion = 5.20.0\n"],
+    ids=["non-numeric version", "malformed toml"],
+)
+def test_an_unreadable_version_is_exit_2_naming_the_commit(repo: Path, content: str) -> None:
+    """CR 4: exit 1 means "untagged"; a pyproject the script can't read is not that."""
+    _, merge = _land(repo, "odd", [{PYPROJECT: content}])
+    result = run(repo, "check", "origin/main")
+    assert result.returncode == 2
+    assert merge[:12] in result.stderr
+    assert "Traceback" not in result.stderr
