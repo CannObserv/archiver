@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import os
+import re
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -173,6 +174,50 @@ os.environ.pop("ARCHIVER_CAPTURE_ENABLED", None)
 # test runs would refuse to start without Notifier, or queue sends with it.
 os.environ.pop("ARCHIVER_NOTIFY_CUTOVER_AT", None)
 os.environ.pop("ARCHIVER_DEV_NOTIFY_CUTOVER_AT", None)
+
+
+# ---------------------------------------------------------------------------
+# The browser tier (archiver#546): collected only when ``-m`` selects it, or
+# when a command-line path names something under ``tests/browser/`` (CR 3:
+# pytest never consults this hook for an explicit file, so a named directory
+# follows suit rather than silently collecting nothing).
+#
+# Not by ``addopts``: a command-line ``-m`` replaces that expression, so CI's
+# ``-m "not integration"`` would bring the tier back (power-map #304). Ignoring
+# the directory also means a run that never asked for the tier never imports
+# Playwright, so the default gate needs no ``browser`` group; one that asks
+# without it fails on ``tests/browser/conftest.py``'s import, never a skip.
+# ---------------------------------------------------------------------------
+BROWSER_DIR = Path(__file__).resolve().parent / "browser"
+_NOT_BROWSER = re.compile(r"\bnot\s+browser\b")
+_BROWSER = re.compile(r"\bbrowser\b")
+
+
+def selects_browser(markexpr: str) -> bool:
+    """True when a ``-m`` expression names ``browser`` other than as ``not browser``."""
+    return bool(_BROWSER.search(_NOT_BROWSER.sub("", markexpr)))
+
+
+def in_browser_tier(path: Path) -> bool:
+    """True for ``tests/browser/`` and anything under it, compared resolved (CR 2)."""
+    resolved = path.resolve()
+    return resolved == BROWSER_DIR or BROWSER_DIR in resolved.parents
+
+
+def names_browser_path(args: list[str], invocation_dir: Path) -> bool:
+    """True when a command-line path (``file::node`` ids too) lies in the tier."""
+    return any(in_browser_tier(invocation_dir / arg.split("::")[0]) for arg in args)
+
+
+def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
+    """Leave ``tests/browser/`` uncollected unless the run asks for it."""
+    if not in_browser_tier(collection_path):
+        return None
+    if selects_browser(config.option.markexpr or ""):
+        return None
+    if names_browser_path(config.args, config.invocation_params.dir):
+        return None
+    return True
 
 
 def _run_alembic_upgrade() -> None:

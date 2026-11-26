@@ -154,6 +154,70 @@ jobs:
       - name: pytest (integration)
         run: uv run pytest -v -m integration
 
+  # The real-browser tier (archiver#546): headless Chromium against the app on a
+  # loopback port, for what happy-dom cannot see (layout, focus, real taps). Its
+  # own job, beside `test` rather than after it, and the only one that syncs the
+  # `browser` group. deploy.sh's gate needs no entry for it: any job that does
+  # not pass fails the gate.
+  browser:
+    name: browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # WIF: mint an OIDC token for google-github-actions/auth (see the lint job).
+    permissions:
+      contents: read
+      id-token: write
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: archiver_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/archiver_test
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          prune-cache: true
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      # The cannobserv wheelhouse, as the test job pulls it (archiver#72/#75).
+      - name: Authenticate to Google Cloud (WIF, read-only)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: co-pypi-reader@co-gcs.iam.gserviceaccount.com
+
+      - name: Sync cannobserv wheelhouse
+        run: uv run --no-project --with 'google-cloud-storage>=2,<4' --with 'certifi>=2026.10.19' python scripts/sync_wheelhouse.py
+
+      - name: uv sync
+        run: uv sync --group dev --group browser
+
+      # The lock's build of the headless shell, plus the system libraries the
+      # runner image lacks (this host already has them).
+      - name: install Chromium
+        run: bash scripts/install_browser.sh --with-deps
+
+      - name: pytest (browser)
+        run: uv run --group browser pytest tests/browser -m browser -v
+
   client-drift:
     name: client-drift
     runs-on: ubuntu-24.04
