@@ -227,3 +227,14 @@ def test_ci_changelog_job_runs_the_check_against_the_base() -> None:
     step = runs[0]
     assert step["env"]["PR_BASE_SHA"] == "${{ github.event.pull_request.base.sha }}"
     assert step["env"]["PUSH_BEFORE_SHA"] == "${{ github.event.before }}"
+
+
+def test_a_version_restored_by_a_revert_keeps_its_first_commit(repo: Path) -> None:
+    """CR 1: a reverted bump brings a version back; its tag stays at its first commit."""
+    _, first = _bump(repo, "a", FLOOR)
+    _bump(repo, "b", "5.20.0")
+    _land(repo, "revert-b", [{PYPROJECT: _pyproject(FLOOR)}])
+    assert run(repo, "tag", "--push").returncode == 0
+    assert _git(repo, "rev-parse", f"sdk-v{FLOOR}^{{commit}}") == first
+    result = run(repo, "check", "origin/main")
+    assert result.returncode == 0, result.stderr

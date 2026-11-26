@@ -82,16 +82,20 @@ def version_at(rev: str) -> str | None:
 
 
 def releases(ref: str, floor: str = FLOOR) -> list[Release]:
-    """Every release at or above ``floor`` on ``ref``'s first-parent line, oldest first."""
-    found = []
+    """Every release at or above ``floor`` on ``ref``'s first-parent line, oldest first.
+
+    A version that comes back (a reverted bump) keeps the commit that first set it,
+    which is where its tag already is (CR 1).
+    """
+    found: dict[str, Release] = {}
     commits = git("rev-list", "--first-parent", "--reverse", ref, "--", PYPROJECT).split()
     for commit in commits:
         version = version_at(commit)
-        if version is None or version == version_at(f"{commit}^1"):
+        if version is None or version in found or version == version_at(f"{commit}^1"):
             continue
         if _key(version) >= _key(floor):
-            found.append(Release(version, commit))
-    return found
+            found[version] = Release(version, commit)
+    return list(found.values())
 
 
 def remote_tags(remote: str = REMOTE) -> dict[str, tuple[str, str | None]]:
