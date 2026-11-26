@@ -239,3 +239,14 @@ def test_a_version_restored_by_a_revert_keeps_its_first_commit(repo: Path) -> No
     assert _git(repo, "rev-parse", f"sdk-v{FLOOR}^{{commit}}") == first
     result = run(repo, "check", "origin/main")
     assert result.returncode == 0, result.stderr
+
+
+def test_check_refuses_a_shallow_clone(repo: Path, tmp_path: Path) -> None:
+    """CR 3: at a shallow boundary every commit would look like it set its version."""
+    _bump(repo, "release", FLOOR)
+    shallow = tmp_path / "shallow"
+    origin = (tmp_path / "origin.git").as_uri()
+    _git(tmp_path, "clone", "-q", "--depth", "1", origin, str(shallow))
+    result = run(shallow, "check", "origin/main")
+    assert result.returncode == 2
+    assert "shallow" in result.stderr

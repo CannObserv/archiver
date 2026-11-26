@@ -85,8 +85,11 @@ def releases(ref: str, floor: str = FLOOR) -> list[Release]:
     """Every release at or above ``floor`` on ``ref``'s first-parent line, oldest first.
 
     A version that comes back (a reverted bump) keeps the commit that first set it,
-    which is where its tag already is (CR 1).
+    which is where its tag already is (CR 1). A shallow clone is refused: at its
+    boundary a commit has no parent to compare, so it would look like a release (CR 3).
     """
+    if git("rev-parse", "--is-shallow-repository") == "true":
+        raise GitError("a shallow clone cannot find releases; fetch full history (--unshallow)")
     found: dict[str, Release] = {}
     commits = git("rev-list", "--first-parent", "--reverse", ref, "--", PYPROJECT).split()
     for commit in commits:
