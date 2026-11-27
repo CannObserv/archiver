@@ -59,16 +59,38 @@ def test_installed_at_or_above_the_floor() -> None:
     assert Version(version("certifi")) >= Version(FLOOR), version("certifi")
 
 
+def _unfloored(text: str) -> list[str]:
+    """The unlocked-env commands in *text* that don't floor certifi. A command
+    continued with a backslash is read as one line."""
+    joined = re.sub(r"\\\n\s*", " ", text)
+    return [cmd for cmd in UNLOCKED.findall(joined) if f"--with 'certifi>={FLOOR}'" not in cmd]
+
+
 def test_every_unlocked_env_floors_certifi() -> None:
-    envs = []
+    unfloored = []
     for path in tracked_files():
         file = ROOT / path
         if path.startswith(DATED) or path == SELF or not file.is_file():
             continue
-        text = re.sub(r"\\\n\s*", " ", file.read_text(errors="replace"))
-        envs += [(path, cmd) for cmd in UNLOCKED.findall(text)]
-    unfloored = [path for path, cmd in envs if f"--with 'certifi>={FLOOR}'" not in cmd]
+        unfloored += [(path, cmd) for cmd in _unfloored(file.read_text(errors="replace"))]
     assert not unfloored, unfloored
+
+
+@pytest.mark.parametrize(
+    ("text", "caught"),
+    [
+        ("uv run --no-project --with 'google-auth>=2' python x.py\n", True),
+        ("uv run --no-project \\\n  --with 'google-auth>=2' python x.py\n", True),
+        (f"uv run --no-project --with 'x>=1' --with 'certifi>={FLOOR}' python x.py\n", False),
+        (f"uv run --no-project --with 'x>=1' \\\n  --with 'certifi>={FLOOR}' python x.py\n", False),
+        ("uv run --no-project --python 3.12 python x.py\n", False),
+    ],
+    ids=["one-line", "continued", "floored", "floored-continued", "no-with"],
+)
+def test_the_sweep_catches_an_unfloored_env(text: str, caught: bool) -> None:
+    """Guard the guard: no tracked file holds such an env since #498, so the
+    sweep above passes vacuously unless its pattern is known to bite."""
+    assert bool(_unfloored(text)) is caught
 
 
 def test_the_co_pypi_mint_runs_from_the_floored_lock() -> None:
