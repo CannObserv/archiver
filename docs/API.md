@@ -60,7 +60,7 @@ which calls the same core functions without these routes.
 | Discard dead-lettered outbox rows | `POST /tools/outbox/dead-lettered/discard` | generated only (operator control, archiver#191): `{"row_ids": [...]}` (1-500 ULIDs) → `{discarded, not_found}`; each row logged in full to journald, then deleted, in one transaction. A live or published row is never deleted and comes back in `not_found` |
 | `resolve_rep_fields` | `POST /tools/resolve-rep-fields` | `resolve_rep_fields(bag)` |
 | `find_info_item` | `GET /tools/find-info-items?q=…` | `find_info_item(query, limit=20)` |
-| `fetch_and_render` | `POST /tools/fetch-and-render` | `fetch_and_render(url)`. A non-2xx is a 200 with `status_code`, not refused. 422 code `target_unreachable` (a transport error, archiver#561); `render=True` is a 501 |
+| `fetch_and_render` | `POST /tools/fetch-and-render` | `fetch_and_render(url)`. 422 code `target_unreachable`; a non-2xx is a 200 with `status_code` |
 | `preview_extraction` | `POST /tools/preview-extraction` | `preview_extraction(url, source_spec)`. 422 codes `target_unreachable`, `target_http_error` (non-2xx, archiver#473), `extraction_failed`: see OpenAPI |
 | `propose_selectors` | `POST /tools/propose-selectors` | `propose_selectors(url, description, top_k=5)`. 422 codes `target_unreachable`, `target_http_error` |
 
