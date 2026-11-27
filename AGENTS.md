@@ -18,14 +18,15 @@ TDD required: Red → Green → Refactor. No production code without a failing t
 
 Python ≥3.12, uv, pytest, ruff. **Postgres 16 on archiver's own VM** (#193 D5), not shared with watcher or notifier. Three databases: `archiver`, `archiver_dev`, `archiver_test`. Set `ARCHIVER_DEV_DATABASE_URL` or `scripts/dev_server.sh` falls back to the test DB and races the suite.
 
-**`co-core` + `co-core-aio` resolve from a local wheelhouse** (`./.wheelhouse`,
-gitignored), not PyPI. Populate it before `uv sync`/`uv run` or resolution fails:
+**`co-core` + `co-core-aio` resolve from cannobserv's private co-pypi index**, not
+PyPI, with a per-command token (#498). Sync a checkout or a new worktree through the
+wrapper; `uv run` on a synced venv needs no token:
 
 ```bash
-GOOGLE_APPLICATION_CREDENTIALS="$(sed -n 's/^GOOGLE_APPLICATION_CREDENTIALS=//p' /etc/archiver/deploy.env)" uv run --no-project --with 'google-cloud-storage>=2,<4' --with 'certifi>=2026.10.19' python scripts/sync_wheelhouse.py
+bash scripts/co-pypi.sh uv sync               # also wraps uv lock (a co-core bump)
 ```
 
-Reproducibility, the upgrade path, and the CI/deploy resolution: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+The wrapper, the upgrade path, CI and the deploy: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 <!-- BEGIN socraticode-policy -->
 ## Code Exploration Policy
@@ -143,7 +144,7 @@ Never hold a transaction open (it blocks deploys) or give Python a production UR
 ## Common Commands
 
 ```bash
-uv sync                                      # deps; resolves co-core from ./.wheelhouse (populate it first)
+bash scripts/co-pypi.sh uv sync              # deps; co-core needs the index token
 uv run pytest                                # tests
 uv run ruff check .                          # lint (also ruff format .)
 uv run alembic upgrade head                  # apply migrations (_test/_dev DBs; production: Server Lifecycle)
@@ -226,7 +227,7 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 - [docs/BUS.md](docs/BUS.md) - the outbox producer; the seven streams published
 - [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) - the four streams consumed; consumer naming
 - [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants; the bus-state tables: [docs/SCHEMA_BUS.md](docs/SCHEMA_BUS.md); domains, host suspension, `content.fetch-policy`: [docs/DOMAINS.md](docs/DOMAINS.md)
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - releases, the drift check, the service user, wheelhouse
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - releases, the drift check, the service user, the co-pypi index
 - [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) - full env-var reference, dev-server internals
 - [docs/BACKUP.md](docs/BACKUP.md) - the nightly dump to GCS, its provisioning, the restore runbook
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) - changelog trigger, journald contract, error envelope, living-docs rule, `PLC0415` scope

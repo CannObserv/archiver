@@ -21,11 +21,16 @@ from tests.scripts._skills_lists import tracked_files
 FLOOR = "2026.10.19"
 ROOT = Path(__file__).resolve().parent.parent
 
-# The wheelhouse fetch runs in `uv run --no-project`, which pyproject's constraint
-# never reaches, so each copy of the command floors certifi itself. Dated records
-# (plans, the changelog) keep the command as it was.
-FETCH = re.compile(r"uv run --no-project[^\n]*?scripts/sync_wheelhouse\.py")
+# A `uv run --no-project --with` env resolves at run time, where pyproject's
+# constraint never reaches, so any such command floors certifi itself. #498
+# retired the last one, the wheelhouse fetch: the co-pypi mint (the one process
+# that holds the reader key) runs from the lock instead. Dated records (plans,
+# the changelog) keep the commands as they were.
+UNLOCKED = re.compile(r"uv run --no-project[^\n]*?--with [^\n]*")
 DATED = ("docs/plans/", "CHANGELOG.md")
+WRAPPER = ROOT / "scripts" / "co-pypi.sh"
+# This file names the pattern it sweeps for.
+SELF = "tests/test_certifi_floor.py"
 
 
 def test_pyproject_constrains_the_floor() -> None:
@@ -54,14 +59,43 @@ def test_installed_at_or_above_the_floor() -> None:
     assert Version(version("certifi")) >= Version(FLOOR), version("certifi")
 
 
-def test_every_wheelhouse_fetch_floors_certifi() -> None:
-    fetches = []
+def _unfloored(text: str) -> list[str]:
+    """The unlocked-env commands in *text* that don't floor certifi. A command
+    continued with a backslash is read as one line."""
+    joined = re.sub(r"\\\n\s*", " ", text)
+    return [cmd for cmd in UNLOCKED.findall(joined) if f"--with 'certifi>={FLOOR}'" not in cmd]
+
+
+def test_every_unlocked_env_floors_certifi() -> None:
+    unfloored = []
     for path in tracked_files():
         file = ROOT / path
-        if path.startswith(DATED) or not file.is_file():
+        if path.startswith(DATED) or path == SELF or not file.is_file():
             continue
-        text = re.sub(r"\\\n\s*", " ", file.read_text(errors="replace"))
-        fetches += [(path, cmd) for cmd in FETCH.findall(text)]
-    assert len({path for path, _ in fetches}) >= 6, fetches
-    unfloored = [path for path, cmd in fetches if f"--with 'certifi>={FLOOR}'" not in cmd]
+        unfloored += [(path, cmd) for cmd in _unfloored(file.read_text(errors="replace"))]
     assert not unfloored, unfloored
+
+
+@pytest.mark.parametrize(
+    ("text", "caught"),
+    [
+        ("uv run --no-project --with 'google-auth>=2' python x.py\n", True),
+        ("uv run --no-project \\\n  --with 'google-auth>=2' python x.py\n", True),
+        (f"uv run --no-project --with 'x>=1' --with 'certifi>={FLOOR}' python x.py\n", False),
+        (f"uv run --no-project --with 'x>=1' \\\n  --with 'certifi>={FLOOR}' python x.py\n", False),
+        ("uv run --no-project --python 3.12 python x.py\n", False),
+    ],
+    ids=["one-line", "continued", "floored", "floored-continued", "no-with"],
+)
+def test_the_sweep_catches_an_unfloored_env(text: str, caught: bool) -> None:
+    """Guard the guard: no tracked file holds such an env since #498, so the
+    sweep above passes vacuously unless its pattern is known to bite."""
+    assert bool(_unfloored(text)) is caught
+
+
+def test_the_co_pypi_mint_runs_from_the_floored_lock() -> None:
+    """Its env is the lock's ``co-pypi`` group, so the constraint reaches it;
+    tests/test_dependency_index.py holds certifi in that group's closure."""
+    text = WRAPPER.read_text()
+    assert "--frozen --only-group co-pypi" in text
+    assert "--no-project" not in text

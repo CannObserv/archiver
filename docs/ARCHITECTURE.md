@@ -363,9 +363,9 @@ tests/                         Mirrors src/ structure; tests/integration/ for cr
 scripts/                       deploy.sh (build a release from a pushed main commit,
                                rehearse + migrate, switch /srv/archiver/live, verify,
                                switch back on failure; archiver#330, DEPLOYMENT.md) +
-                               sync_wheelhouse.py (mirror co-core wheels from the private
-                               GCS index into ./.wheelhouse; run before uv sync, and by
-                               deploy.sh into each release) +
+                               co-pypi.sh + co_pypi_token.py (run one uv command with a
+                               co-pypi index token; a checkout's sync, and deploy.sh's
+                               in each release; archiver#498) +
                                dump_openapi.py +
                                setup-backup-role.sql (the backup's database role,
                                once per cluster; archiver#233, BACKUP.md) +

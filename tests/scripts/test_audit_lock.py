@@ -4,8 +4,8 @@
 ``uv.lock`` and ``clients/python/uv.lock``, each twice: the runtime packages
 (``--no-dev``) and the dev group (``--only-dev``), reported apart so a standing
 dev advisory never masks a new runtime one. ``.github/workflows/audit.yml`` runs
-it on every push, every PR and once a week. Dependabot's ``uv`` ecosystem can't
-run here: co-core resolves only from the private wheelhouse (#192).
+it on every push, every PR and once a week. Dependabot runs no ``uv`` version
+updates here (#192, #498).
 
 **Report-only is the contract.** A gate that failed on a finding would turn
 ``main`` red on someone else's disclosure date. So every exit is 0. A finding
@@ -129,7 +129,7 @@ def test_every_exit_is_zero(tmp_path, uv_exit):
 
 def test_audits_both_locks_runtime_and_dev_without_relocking(tmp_path):
     """``--frozen`` reads each lock as committed. A relock would need the
-    private wheelhouse, which this job has no credential to fetch. ``uv audit``
+    co-pypi index's token, which this job has no credential to mint. ``uv audit``
     is a preview command, so the flag goes first and a uv that knows it runs
     once per audit."""
     _, calls, _ = _run(tmp_path, 0)
@@ -253,7 +253,7 @@ def test_runs_off_actions_without_a_summary(tmp_path):
 def test_workflow_runs_the_script_on_a_schedule_with_no_secret():
     """Disclosures arrive without commits, so the job runs weekly as well as on
     push and PR. It holds no secret and no OIDC token: ``--frozen`` needs no
-    wheelhouse, so it needs no WIF. Its own workflow, not a ``ci.yml`` job:
+    index, so it needs no WIF. Its own workflow, not a ``ci.yml`` job:
     ``scripts/deploy.sh``'s CI gate reads ``ci.yml`` runs alone."""
     text = WORKFLOW.read_text()
     on_block = re.search(r"^on:\n((?:[ #].*\n|\n)+)", text, re.MULTILINE)

@@ -129,7 +129,7 @@ class TestCounts:
             ".skills/worktree_venv",
             "clients/python/src/archiver_client/client.py",
             "scripts/dev_server.sh",
-            "scripts/sync_wheelhouse.py",
+            "scripts/co-pypi.sh",
             ".gitmodules",
             "srcery/x.py",
             "deployment.md",

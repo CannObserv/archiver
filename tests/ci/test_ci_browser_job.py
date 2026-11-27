@@ -29,7 +29,7 @@ def test_the_browser_job_has_a_time_limit() -> None:
 
 def test_it_syncs_the_browser_group_installs_chromium_then_runs_the_tier() -> None:
     runs = _runs(_jobs()["browser"])
-    sync = runs.index("uv sync --group dev --group browser")
+    sync = runs.index("uv sync --locked --group dev --group browser")
     install = runs.index("bash scripts/install_browser.sh --with-deps")
     tier = "uv run --group browser pytest"
     pytest_run = next(i for i, r in enumerate(runs) if r.startswith(tier))

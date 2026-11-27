@@ -9,7 +9,7 @@ directory that lacks them (gregoryfoster/skills#301, fixed upstream in
 ``7b0ef6a`` and carried here by archiver#243).
 
 Latent rather than live: archiver's ``scripts/`` holds ``dev_server.sh`` and
-``sync_wheelhouse.py``, none of the cadence scripts. But it is a scheduled job
+``co-pypi.sh``, none of the cadence scripts. But it is a scheduled job
 with a credential and a push, so its failure mode is a red Monday-morning run
 nobody is watching, and the cheapest guard is to execute the step.
 

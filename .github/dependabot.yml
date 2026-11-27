@@ -4,8 +4,11 @@
 # its own credential context, so the WIF auth step is the first thing to read
 # on a red one. How one lands: docs/DEPLOYMENT.md -> "Dependabot".
 #
-# github-actions only. `uv` waits on #192's blocker 2: co-core resolves only
-# from the private wheelhouse, which Dependabot's updater cannot sync. npm
+# github-actions only, never uv version updates: co-core moves by hand (#454).
+# uv security updates need no entry here and move uv.lock regardless; they read
+# co-core from the co-pypi index over OIDC through the org registry
+# PYTHON_INDEX_OIDC_GCP once an org owner admits this repo (#498, #437;
+# cannobserv docs/DEPENDABOT.md, step 3), so no `registries:` key. npm
 # (`"latest"` specifiers) and gitsubmodule (deliberate skills-vendor/ bumps)
 # stay out too.
 # Guarded by tests/ci/test_dependabot.py: a mistyped config stops producing

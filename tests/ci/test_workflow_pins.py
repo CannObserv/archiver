@@ -2,14 +2,15 @@
 
 **The cache.** setup-uv v9 flipped ``prune-cache`` to ``false`` (v5's
 ``action.yml`` defaults it ``true``). Unpruned, the uv cache the lint and test
-jobs save holds co-core unpacked from the private wheelhouse, and archiver is
+jobs save holds co-core unpacked from the private co-pypi index, and archiver is
 public: a fork's pull request can restore a cache saved on ``main``. Dependabot
 moves setup-uv past v9 with CI green, so the default would flip silently.
 ``uv cache prune --ci`` drops every pre-built wheel, co-core's included, so
 every setup-uv step that saves a cache, in every workflow, states it; one with
 ``enable-cache: false`` saves none (audit.yml, #420). It keeps a wheel *built from
-source*, so the prune covers co-core only while uv.lock pins it to a wheel: the
-lock check below holds that premise. Ported from CannObserv/broker#88.
+source*, so the prune covers co-core only while uv.lock pins it to a wheel:
+tests/test_dependency_index.py holds that premise (#498). Ported from
+CannObserv/broker#88.
 
 **The runner.** ``ubuntu-24.04``, not ``ubuntu-latest``: CI matches the deploy
 host's distro. ``ubuntu-latest`` moves to 26.04 on GitHub's schedule, between
@@ -27,7 +28,6 @@ the host moves, ``test_ci_node_matches_the_host`` fails on it until CI does.
 import re
 import shutil
 import subprocess
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -37,7 +37,6 @@ from tests.deploy.live_release import LIVE
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CI = REPO_ROOT / ".github" / "workflows" / "ci.yml"
-LOCK = REPO_ROOT / "uv.lock"
 OS_RELEASE = Path("/etc/os-release")
 
 
@@ -90,30 +89,6 @@ def test_only_a_step_that_saves_nothing_skips_the_prune(with_: dict, unpruned: b
     only an explicit YAML ``false`` exempts a step; a quoted ``"false"`` is a
     string to YAML and to this check, and fails safe."""
     assert bool(_unpruned([{"with": with_}])) is unpruned
-
-
-def _wheelhouse_packages_without_a_wheel(lock: Path) -> list[str]:
-    packages = tomllib.loads(lock.read_text(encoding="utf-8"))["package"]
-    return [
-        p["name"]
-        for p in packages
-        if p.get("source", {}).get("registry") == ".wheelhouse" and not p.get("wheels")
-    ]
-
-
-def test_every_wheelhouse_package_is_locked_to_a_wheel() -> None:
-    """The prune's premise: a package installed from its wheel is pruned."""
-    assert _wheelhouse_packages_without_a_wheel(LOCK) == []
-
-
-def test_wheel_check_fails_on_an_sdist_only_lock(tmp_path: Path) -> None:
-    lock = tmp_path / "uv.lock"
-    lock.write_text(
-        '[[package]]\nname = "co-core"\nversion = "9.9.9"\n'
-        'source = { registry = ".wheelhouse" }\n'
-        'sdist = { path = "co_core-9.9.9.tar.gz" }\n'
-    )
-    assert _wheelhouse_packages_without_a_wheel(lock) == ["co-core"]
 
 
 def _runners() -> set[str]:

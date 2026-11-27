@@ -158,8 +158,8 @@ provision the venv.
 
 **Phase 3, in order:**
 
-1. `uv sync`, after populating the gitignored `./.wheelhouse` by the recipe in
-   CLAUDE.md § Environment & Tooling.
+1. `bash scripts/co-pypi.sh uv sync`: co-core needs the index token, which the
+   wrapper mints (CLAUDE.md § Environment & Tooling).
 2. No `.env` to copy: `scripts/dev_server.sh` and `scripts/pre-ship.sh` both fall
    back to the primary checkout's (`scripts/lib/env.sh`, #452).
 3. If the branch serves, pick its own port (any free one in 3000-9999, never 8000,

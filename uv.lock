@@ -95,7 +95,11 @@ dependencies = [
 browser = [
     { name = "playwright" },
 ]
+co-pypi = [
+    { name = "google-auth", extra = ["requests"] },
+]
 dev = [
+    { name = "cryptography" },
     { name = "fakeredis" },
     { name = "openapi-python-client" },
     { name = "packaging" },
@@ -115,8 +119,8 @@ requires-dist = [
     { name = "archiver-client", editable = "clients/python" },
     { name = "asyncpg", specifier = ">=0.30.0,<1" },
     { name = "beautifulsoup4", specifier = ">=4.12.0,<5" },
-    { name = "co-core", extras = ["extract"], specifier = ">=0.38,<0.39" },
-    { name = "co-core-aio", extras = ["bus"], specifier = ">=0.38,<0.39" },
+    { name = "co-core", extras = ["extract"], specifier = ">=0.38,<0.39", index = "https://us-west1-python.pkg.dev/co-gcs/co-pypi/simple/" },
+    { name = "co-core-aio", extras = ["bus"], specifier = ">=0.38,<0.39", index = "https://us-west1-python.pkg.dev/co-gcs/co-pypi/simple/" },
     { name = "fastapi", specifier = ">=0.115.0,<1" },
     { name = "google-cloud-storage", specifier = ">=2,<4" },
     { name = "httpx", specifier = ">=0.28.0,<1" },
@@ -135,7 +139,9 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 browser = [{ name = "playwright", specifier = ">=1.65.2,<1.66" }]
+co-pypi = [{ name = "google-auth", extras = ["requests"], specifier = ">=2,<3" }]
 dev = [
+    { name = "cryptography", specifier = ">=50,<51" },
     { name = "fakeredis", specifier = ">=2.20" },
     { name = "openapi-python-client", specifier = ">=0.21,<1" },
     { name = "packaging", specifier = ">=24,<27" },
@@ -487,14 +493,14 @@ wheels = [
 [[package]]
 name = "co-core"
 version = "0.38.0"
-source = { registry = ".wheelhouse" }
+source = { registry = "https://us-west1-python.pkg.dev/co-gcs/co-pypi/simple/" }
 dependencies = [
     { name = "dateparser" },
     { name = "pydantic" },
 ]
-sdist = { path = "co_core-0.38.0.tar.gz" }
+sdist = { url = "https://us-west1-python.pkg.dev/co-gcs/co-pypi/co-core/co_core-0.38.0.tar.gz", hash = "sha256:2ec3cbc6f020792d24b3baff92724567c4eb74102b80e3ed47b54dc3ec39cf29" }
 wheels = [
-    { path = "co_core-0.38.0-py3-none-any.whl" },
+    { url = "https://us-west1-python.pkg.dev/co-gcs/co-pypi/co-core/co_core-0.38.0-py3-none-any.whl", hash = "sha256:44a62404f645de685c6260e087311d3e2cf0cf6074e9a9cfc2d6cf35b3c566f9" },
 ]
 
 [package.optional-dependencies]
@@ -511,14 +517,14 @@ extract = [
 [[package]]
 name = "co-core-aio"
 version = "0.38.0"
-source = { registry = ".wheelhouse" }
+source = { registry = "https://us-west1-python.pkg.dev/co-gcs/co-pypi/simple/" }
 dependencies = [
     { name = "co-core" },
     { name = "httpx" },
 ]
-sdist = { path = "co_core_aio-0.38.0.tar.gz" }
+sdist = { url = "https://us-west1-python.pkg.dev/co-gcs/co-pypi/co-core-aio/co_core_aio-0.38.0.tar.gz", hash = "sha256:682de39ea8df87d24e1d02c330375c8bf7e9785ea6bd931964bd4e2ef26c82b1" }
 wheels = [
-    { path = "co_core_aio-0.38.0-py3-none-any.whl" },
+    { url = "https://us-west1-python.pkg.dev/co-gcs/co-pypi/co-core-aio/co_core_aio-0.38.0-py3-none-any.whl", hash = "sha256:aac71c6f5e8d34e5a9aff856ce0f1c40898b41561ad399df908896ece718aef1" },
 ]
 
 [package.optional-dependencies]
@@ -781,6 +787,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f5/b9/4b2528f30114b106e3c3a7298ba38d85e682fd1f83fe7c4a5b77c7677082/google_auth-2.62.0.tar.gz", hash = "sha256:0bef0ce54bdf9ce226c5d66e4264413bd918141c31bbe49fb52eac882f513d69", size = 398180, upload-time = "2026-10-12T19:20:48.328Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/a3/87fe9b7203ec2e56ea6a57c75e6d632eaf9487c7f7978cdad1d801bee0af/google_auth-2.62.0-py3-none-any.whl", hash = "sha256:4ff4319aeb4ad128409759d397a9fcafad126d0031d241cc0dd6b9a00b43e3f3", size = 267911, upload-time = "2026-10-12T19:20:46.355Z" },
+]
+
+[package.optional-dependencies]
+requests = [
+    { name = "requests" },
 ]
 
 [[package]]
