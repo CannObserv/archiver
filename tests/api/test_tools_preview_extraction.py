@@ -1,8 +1,12 @@
 """Tests for POST /api/v1/tools/preview-extraction."""
 
+import ssl
+
+import co_core_aio.transport
 import httpx
 import pytest
 from co_core.effects.fetch import FetchResult
+from co_core_aio.fetch import AsyncFetchDriver
 
 from src.api.deps import get_fetch_driver
 from src.api.main import app
@@ -117,6 +121,86 @@ async def test_preview_extraction_unreachable_target_returns_422_target_unreacha
     assert detail["kind"] == "domain"
     assert detail["errors"][0]["code"] == "target_unreachable"
     assert detail["errors"][0]["path"] == "/url"
+
+
+class _TlsReadErrorTransport(httpx.AsyncBaseTransport):
+    """Stands in for the library's inner ``httpx.AsyncHTTPTransport``.
+
+    Raises the raw ``ssl.SSLError`` anyio lets through on a non-EOF TLS error
+    while reading the answer (cannobserv#597) for the first ``failures`` attempts,
+    then answers 200 with ``HTML_FIXTURE``.
+    """
+
+    failures = 0
+    attempts = 0
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        type(self).attempts += 1
+        if type(self).attempts <= type(self).failures:
+            raise ssl.SSLError(1, "[SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] bad record mac")
+        return httpx.Response(
+            200, headers={"content-type": "text/html"}, content=HTML_FIXTURE, request=request
+        )
+
+
+@pytest.fixture
+def tls_read_error_driver(monkeypatch):
+    """The app's own ``AsyncFetchDriver()`` (no client argument, so the library's
+    resilient transport), over :class:`_TlsReadErrorTransport`, with no backoff."""
+    monkeypatch.setattr(_TlsReadErrorTransport, "attempts", 0)
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", _TlsReadErrorTransport)
+    monkeypatch.setattr(co_core_aio.transport, "backoff_delay", lambda *a, **k: 0.0)
+
+    def _build(failures: int) -> AsyncFetchDriver:
+        monkeypatch.setattr(_TlsReadErrorTransport, "failures", failures)
+        driver = AsyncFetchDriver()
+        app.dependency_overrides[get_fetch_driver] = lambda: driver
+        return driver
+
+    return _build
+
+
+@pytest.mark.asyncio
+async def test_preview_extraction_persistent_tls_read_error_returns_422_target_unreachable(
+    client, tls_read_error_driver
+):
+    """#445: co-core-aio 0.39.4 re-spells it ``httpx.ReadError``; before, a raw
+    ``ssl.SSLError`` passed ``fetch_2xx``'s ``except httpx.HTTPError`` and answered 500.
+    The message is OpenSSL's text, which varies by build, so it isn't pinned."""
+    driver = tls_read_error_driver(failures=100)
+    try:
+        response = await client.post(
+            "/api/v1/tools/preview-extraction",
+            headers=HEADERS,
+            json={"url": DEFAULT_URL, "source_spec": VALID_FULL_PAGE_SPEC},
+        )
+    finally:
+        await driver.aclose()
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert detail["errors"][0]["code"] == "target_unreachable"
+    assert detail["errors"][0]["path"] == "/url"
+
+
+@pytest.mark.asyncio
+async def test_preview_extraction_retries_a_one_off_tls_read_error(client, tls_read_error_driver):
+    """#445: a GET retries the re-spelled ``ReadError``, so one bad record previews."""
+    driver = tls_read_error_driver(failures=1)
+    try:
+        response = await client.post(
+            "/api/v1/tools/preview-extraction",
+            headers=HEADERS,
+            json={"url": DEFAULT_URL, "source_spec": VALID_FULL_PAGE_SPEC},
+        )
+    finally:
+        await driver.aclose()
+    assert response.status_code == 200
+    assert response.json()["chunks"]
+    assert _TlsReadErrorTransport.attempts == 2
 
 
 @pytest.mark.asyncio
