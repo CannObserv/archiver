@@ -13,9 +13,9 @@ What the script must hold (design note ``docs/plans/2026-10-09-330-deploy-releas
 - **Immutable releases** (R2-R4): one per commit, built once, read-only and
   root's, ``REVISION`` written last, the venv copied (not hardlinked) from the
   uv cache on the system interpreter.
-- **Private wheels at build time** (D10): the release's own
-  ``sync_wheelhouse.py`` fetches them with the deploy-only credential; they
-  are removed once the venv is built.
+- **Private wheels at build time** (D10, #498): the release's own
+  ``scripts/co-pypi.sh`` wraps its ``uv sync``, minting the index token from
+  the deploy-only key; only ``deploy.env`` names that key.
 - **Every unit's entry point imports from the release** (D11) before
   ``REVISION`` marks it finished.
 - **Order** (D2, D3): rehearse the migration on ``archiver_dev``, migrate
@@ -44,8 +44,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tests.test_certifi_floor import FLOOR as CERTIFI_FLOOR
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = REPO_ROOT / "scripts" / "deploy.sh"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
@@ -59,9 +57,6 @@ echo "uv $PWD ALLOW=${ARCHIVER_ALLOW_PRODUCTION_DB:-} URL=${ARCHIVER_DATABASE_UR
 state_dir="$(dirname "$FAKE_LOG")"
 db="${ARCHIVER_DATABASE_URL##*/}"
 case "$*" in
-  *sync_wheelhouse*)
-    [[ -n "${FAKE_WHEELS_FAIL:-}" ]] && { echo "gcs: 403" >&2; exit 1; }
-    mkdir -p .wheelhouse && echo wheel > .wheelhouse/co_core-0.19.6-py3-none-any.whl ;;
   sync*)
     [[ -n "${FAKE_SYNC_FAIL:-}" ]] && exit 1
     # The entry points units run (archiver#339), as a real sync installs them.
@@ -97,6 +92,18 @@ case "$*" in
     [[ -n "${FAKE_BROKEN_VENV:-}" ]] && { echo "probe: no interpreter" >&2; exit 2; } ;;
 esac
 exit 0
+"""
+
+# Plays scripts/co-pypi.sh (#498): records what the mint would read, then runs
+# the wrapped uv. The real wrapper's own tests: tests/scripts/test_co_pypi_token.py.
+STUB_CO_PYPI = r"""#!/usr/bin/env bash
+echo "co-pypi $PWD KEY=${ARCHIVER_CO_PYPI_KEY:-} GAC=${GOOGLE_APPLICATION_CREDENTIALS:-}" \
+  "PAIR=${UV_INDEX_CO_PYPI_USERNAME:-}${UV_INDEX_CO_PYPI_PASSWORD:-} $*" >> "$FAKE_LOG"
+if [[ -n "${FAKE_MINT_FAIL:-}" ]]; then
+  echo "error: could not mint a co-pypi access token from $ARCHIVER_CO_PYPI_KEY: invalid_grant" >&2
+  exit 1
+fi
+exec "$@"
 """
 
 # Plays root (status#14). FAKE_ROOT_OWNED is the ledger of what root owns, one
@@ -344,6 +351,8 @@ class World:
         scripts = self.checkout / "scripts"
         scripts.mkdir()
         shutil.copy(DEPLOY, scripts / "deploy.sh")
+        # And the co-pypi wrapper each release syncs through (#498), played.
+        (scripts / "co-pypi.sh").write_text(STUB_CO_PYPI)
         # And the code that names its release on /health: without it no commit
         # can pass verification, so none may be deployed (CR 14).
         (self.checkout / "src" / "core").mkdir(parents=True)
@@ -354,6 +363,7 @@ class World:
             self.checkout,
             "add",
             "scripts/deploy.sh",
+            "scripts/co-pypi.sh",
             "src/core/build.py",
             "src/core/reader_grants.py",
         )
@@ -587,7 +597,7 @@ class TestADeploy:
     def test_every_run_in_the_release_neither_syncs_nor_relocks(self, world):
         assert_ok(world.run())
         runs = [c for c in world.calls() if c.startswith("uv ") and " run " in c]
-        in_release = [c for c in runs if "sync_wheelhouse" not in c]
+        in_release = runs
         assert in_release
         assert all(" run --frozen --no-sync " in c for c in in_release), in_release
 
@@ -598,44 +608,70 @@ class TestADeploy:
         assert any("live" in c and build in c for c in logged)
 
 
-class TestWheels:
-    """D10: private wheels are fetched into the release at build time."""
+class TestIndex:
+    """D10, #498: co-core comes from the co-pypi index at build time, through
+    the release's own wrapper, with the key deploy.env names and nothing else."""
 
-    def test_the_release_fetches_its_own_wheels_with_the_deploy_credential(self, world):
+    def test_the_release_syncs_through_its_own_wrapper_with_the_deploy_key(self, world):
         assert_ok(world.run())
-        (fetch,) = uv_calls(world, "sync_wheelhouse")
+        (wrapped,) = [c for c in world.calls() if c.startswith("co-pypi ")]
         release = world.release(world.main[-1])
-        assert fetch.startswith(f"uv {release} ")
-        assert f"GAC={GAC} " in fetch
-        assert "python scripts/sync_wheelhouse.py" in fetch
-        assert index_of(world.calls(), "sync_wheelhouse") < index_of(world.calls(), " sync --")
+        assert wrapped.startswith(f"co-pypi {release} ")
+        assert f"KEY={GAC} " in wrapped
+        assert " uv sync --locked " in wrapped
+        calls = world.calls()
+        (sync,) = uv_calls(world, " sync --")
+        assert calls.index(wrapped) < calls.index(sync), "the wrapper runs the sync"
 
-    def test_the_fetch_floors_certifi_itself(self, world):
-        """The fetch's env is ``--no-project``, so pyproject's certifi constraint
-        never reaches it (archiver#418): without its own floor, only resolution
-        order keeps the bundle the private wheels arrive over current."""
+    def test_the_key_reaches_the_wrapper_under_its_own_name_alone(self, world):
+        """Not as GOOGLE_APPLICATION_CREDENTIALS: shell-wide, that names an
+        identity to every Google client the wrapped uv could spawn."""
         assert_ok(world.run())
-        (fetch,) = uv_calls(world, "sync_wheelhouse")
-        assert f" --with certifi>={CERTIFI_FLOOR} " in fetch
+        (wrapped,) = [c for c in world.calls() if c.startswith("co-pypi ")]
+        assert " GAC= " in wrapped
 
-    def test_the_fetched_wheels_are_removed_once_the_venv_is_built(self, world):
+    def test_nothing_fetches_a_wheelhouse(self, world):
         assert_ok(world.run())
-        wheelhouse = world.release(world.main[-1]) / ".wheelhouse"
-        assert not [p for p in wheelhouse.rglob("*") if p.is_file() and p.name != ".gitkeep"]
+        assert not [c for c in world.calls() if "sync_wheelhouse" in c]
+        assert not (world.release(world.main[-1]) / ".wheelhouse").exists()
 
-    def test_a_failed_fetch_switches_nothing(self, world):
-        result = world.run(FAKE_WHEELS_FAIL="1")
+    def test_a_failed_mint_switches_nothing(self, world):
+        result = world.run(FAKE_MINT_FAIL="1")
         assert result.returncode == 1
-        assert "wheel" in result.stderr and "nothing switched" in result.stderr
+        assert "could not mint" in result.stderr and "nothing switched" in result.stderr
         assert world.live() is None
         assert not uv_calls(world, " sync --")
 
-    def test_the_credential_is_never_taken_from_the_shell(self, world):
+    def test_the_key_is_never_taken_from_the_shell(self, world):
         (world.etc / "deploy.env").write_text("# forgotten\n")
-        result = world.run(GOOGLE_APPLICATION_CREDENTIALS="/home/exedev/key.json")
+        result = world.run(
+            GOOGLE_APPLICATION_CREDENTIALS="/home/exedev/key.json",
+            ARCHIVER_CO_PYPI_KEY="/home/exedev/key.json",
+        )
         assert result.returncode == 1
         assert "GOOGLE_APPLICATION_CREDENTIALS" in result.stderr
-        assert not uv_calls(world, "sync_wheelhouse")
+        assert not [c for c in world.calls() if c.startswith("co-pypi ")]
+
+    def test_a_shell_key_or_pair_never_reaches_the_wrapper(self, world):
+        """Only deploy.env decides the credential (status CR 5)."""
+        assert_ok(
+            world.run(
+                ARCHIVER_CO_PYPI_KEY="/home/exedev/key.json",
+                UV_INDEX_CO_PYPI_USERNAME="someone",
+                UV_INDEX_CO_PYPI_PASSWORD="a-shell-token",
+            )
+        )
+        (wrapped,) = [c for c in world.calls() if c.startswith("co-pypi ")]
+        assert f"KEY={GAC} " in wrapped and " PAIR= " in wrapped
+
+    def test_a_commit_without_the_wrapper_switches_nothing(self, world):
+        """A pre-#498 commit: its lock names .wheelhouse, which no deploy fetches now."""
+        world.push_deploy({"../scripts/co-pypi.sh": None})
+        result = world.run()
+        assert result.returncode == 1
+        assert "scripts/co-pypi.sh" in result.stderr and "nothing switched" in result.stderr
+        assert world.live() is None
+        assert not uv_calls(world, " sync --")
 
 
 UNITS_V1 = {
@@ -983,7 +1019,7 @@ class TestTheCIGate:
         assert world.build(world.main[-1]) in calls[passed]
         assert "https://github.test/runs/1" in calls[passed]
         assert calls[passed].startswith("logger -t archiver-deploy ")
-        assert passed < index_of(calls, "sync_wheelhouse")
+        assert passed < index_of(calls, "co-pypi ")
 
     def test_a_failed_job_is_refused_by_name_before_anything_is_built(self, world):
         world.ci_answers([ci_run(7, world.main[-1])])
@@ -1083,7 +1119,7 @@ class TestTheCIGate:
         calls = world.calls()
         skipped = index_of(calls, "--skip-ci")
         assert calls[skipped].startswith("logger -t archiver-deploy ")
-        assert skipped < index_of(calls, "sync_wheelhouse")
+        assert skipped < index_of(calls, "co-pypi ")
 
     def test_the_jobs_the_gate_requires_are_ones_ci_yml_runs_on_a_push_to_main(self):
         required = re.search(r"^CI_JOBS=\((.*)\)$", DEPLOY.read_text(), re.M)
@@ -1778,7 +1814,6 @@ class TestTheRepoUnits:
                 if line.startswith("Exec") and " uv " in f" {line} ".replace("/uv ", " uv "):
                     assert "--frozen --no-sync" in line or " sync" not in line, (unit.name, line)
                     assert " run " not in line or "--no-sync" in line, (unit.name, line)
-                assert "sync_wheelhouse" not in line or line.lstrip().startswith("#"), unit.name
 
     def test_no_unit_reads_a_repo_env_or_stamps_a_build(self):
         for unit in self.units():

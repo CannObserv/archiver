@@ -21,11 +21,16 @@ from tests.scripts._skills_lists import tracked_files
 FLOOR = "2026.10.19"
 ROOT = Path(__file__).resolve().parent.parent
 
-# The wheelhouse fetch runs in `uv run --no-project`, which pyproject's constraint
-# never reaches, so each copy of the command floors certifi itself. Dated records
-# (plans, the changelog) keep the command as it was.
-FETCH = re.compile(r"uv run --no-project[^\n]*?scripts/sync_wheelhouse\.py")
+# A `uv run --no-project --with` env resolves at run time, where pyproject's
+# constraint never reaches, so any such command floors certifi itself. #498
+# retired the last one, the wheelhouse fetch: the co-pypi mint (the one process
+# that holds the reader key) runs from the lock instead. Dated records (plans,
+# the changelog) keep the commands as they were.
+UNLOCKED = re.compile(r"uv run --no-project[^\n]*?--with [^\n]*")
 DATED = ("docs/plans/", "CHANGELOG.md")
+WRAPPER = ROOT / "scripts" / "co-pypi.sh"
+# This file names the pattern it sweeps for.
+SELF = "tests/test_certifi_floor.py"
 
 
 def test_pyproject_constrains_the_floor() -> None:
@@ -54,14 +59,21 @@ def test_installed_at_or_above_the_floor() -> None:
     assert Version(version("certifi")) >= Version(FLOOR), version("certifi")
 
 
-def test_every_wheelhouse_fetch_floors_certifi() -> None:
-    fetches = []
+def test_every_unlocked_env_floors_certifi() -> None:
+    envs = []
     for path in tracked_files():
         file = ROOT / path
-        if path.startswith(DATED) or not file.is_file():
+        if path.startswith(DATED) or path == SELF or not file.is_file():
             continue
         text = re.sub(r"\\\n\s*", " ", file.read_text(errors="replace"))
-        fetches += [(path, cmd) for cmd in FETCH.findall(text)]
-    assert len({path for path, _ in fetches}) >= 6, fetches
-    unfloored = [path for path, cmd in fetches if f"--with 'certifi>={FLOOR}'" not in cmd]
+        envs += [(path, cmd) for cmd in UNLOCKED.findall(text)]
+    unfloored = [path for path, cmd in envs if f"--with 'certifi>={FLOOR}'" not in cmd]
     assert not unfloored, unfloored
+
+
+def test_the_co_pypi_mint_runs_from_the_floored_lock() -> None:
+    """Its env is the lock's ``co-pypi`` group, so the constraint reaches it;
+    tests/test_dependency_index.py holds certifi in that group's closure."""
+    text = WRAPPER.read_text()
+    assert "--frozen --only-group co-pypi" in text
+    assert "--no-project" not in text

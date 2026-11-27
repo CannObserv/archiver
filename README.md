@@ -12,7 +12,7 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 - [docs/API.md](docs/API.md) - every HTTP route and its SDK wrapper
 - [docs/BUS.md](docs/BUS.md) / [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) - the change-bus contracts, produced and consumed
 - [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants; the bus-state tables: [docs/SCHEMA_BUS.md](docs/SCHEMA_BUS.md)
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - releases, the service user, wheelhouse; the drift check and liveness: [docs/MONITORING.md](docs/MONITORING.md)
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - releases, the service user, the co-pypi index; the drift check and liveness: [docs/MONITORING.md](docs/MONITORING.md)
 - [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) - environment variables, the dev server
 - [docs/BACKUP.md](docs/BACKUP.md) - the nightly database dump to GCS and the restore runbook
 - [docs/UI.md](docs/UI.md) / [docs/HTMX.md](docs/HTMX.md) / [docs/PAGES.md](docs/PAGES.md) / [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) / [docs/COMPONENTS.md](docs/COMPONENTS.md) / [docs/STYLE.md](docs/STYLE.md) - dashboard mechanics, HTMX patterns, page inventory, the InfoItem hub screen, Alpine components, and styling
@@ -20,11 +20,9 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 ## Run locally
 
 ```bash
-# co-core / co-core-aio resolve from a wheelhouse mirrored from the private GCS
-# index (see AGENTS.md → Environment & Tooling); populate it before uv sync:
-GOOGLE_APPLICATION_CREDENTIALS="$(sed -n 's/^GOOGLE_APPLICATION_CREDENTIALS=//p' /etc/archiver/deploy.env)" \
-  uv run --no-project --with 'google-cloud-storage>=2,<4' --with 'certifi>=2026.10.19' python scripts/sync_wheelhouse.py
-uv sync
+# co-core / co-core-aio resolve from the private co-pypi index, with a
+# per-command token (see AGENTS.md → Environment & Tooling):
+bash scripts/co-pypi.sh uv sync
 bash scripts/dev_server.sh
 ```
 

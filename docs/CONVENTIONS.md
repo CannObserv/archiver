@@ -29,7 +29,7 @@ must tolerate that.
 
 The app's own records - including uvicorn's access/error lines via `--log-config`
 - are JSON. The `ExecStartPre` step in `deploy/archiver.service` (the redis floor
-check; the wheelhouse sync moved to deploy time, #330) and `scripts/deploy.sh`'s
+check; co-core's fetch moved to deploy time, #330) and `scripts/deploy.sh`'s
 `archiver-deploy` journal lines write **plain text** to journald by design: they run
 outside the app process, or before the Python logging config exists, so they
 cannot use `build_json_formatter()`. A journald consumer that blindly `json.loads` every

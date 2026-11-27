@@ -11,8 +11,8 @@
 # Ported from CannObserv/status's scripts/deploy.sh (R1-R13, #11, #14, #18),
 # with processor's corrections (a copied venv on the system interpreter) and
 # archiver's deltas: one target, `live`, with archiver_dev as the migration's
-# rehearsal (D2); private wheels fetched into the release (D10); every unit's
-# entry point imported before the release is finished (D11); verification by
+# rehearsal (D2); co-core from the co-pypi index at build time (D10, #498);
+# every unit's entry point imported before the release is finished (D11); verification by
 # /health's build_id, the schema check and a forced bus-health pass (D3, D4);
 # and a failed first deploy puts back the checkout-backed units it replaced.
 #
@@ -112,7 +112,8 @@ ref="${ref:-origin/main}"
 # Only the env files decide which database and which credential: a shell that
 # sourced /etc/archiver/.env or the repo .env must change nothing (status CR 5).
 unset ARCHIVER_DATABASE_URL DATABASE_URL ARCHIVER_DEV_DATABASE_URL \
-  ARCHIVER_ALLOW_PRODUCTION_DB GOOGLE_APPLICATION_CREDENTIALS
+  ARCHIVER_ALLOW_PRODUCTION_DB GOOGLE_APPLICATION_CREDENTIALS \
+  ARCHIVER_CO_PYPI_KEY UV_INDEX_CO_PYPI_USERNAME UV_INDEX_CO_PYPI_PASSWORD
 
 [[ "$(id -u)" -eq 0 ]] && die "run as exedev, not root; the script sudoes where it needs to"
 
@@ -140,8 +141,8 @@ trap 'rm -rf "$backup" || :' EXIT
 
 # .env is what the units read, root:root 0600: systemd reads it before it drops
 # to the units' user, and exedev reads it only through sudo (archiver#339).
-# dev.env names the rehearsal database (D2); deploy.env holds the wheelhouse
-# credential no unit needs (D10). Both stay exedev's to read. Every sudo here is
+# dev.env names the rehearsal database (D2); deploy.env names the co-pypi
+# reader's key, which no unit needs (D10, #498). Both stay exedev's to read. Every sudo here is
 # -n (#457): .skills/deploy_command runs this with no terminal, so a sudo that
 # needs a password fails at once, by name, never at a prompt.
 read_env() { # <file>
@@ -379,25 +380,22 @@ build_release() {
   sudo -n install -d -m 755 -o "$(id -un)" -g "$(id -gn)" "$release" ||
     die "cannot make releases/$build for $(id -un) to build in; nothing switched"
   git -C "$SRC" archive "$sha" | tar -x -C "$release"
-  # D10: the release's own sync_wheelhouse.py fetches the private wheels into
-  # its .wheelhouse, with the credential from deploy.env alone. Not the
-  # checkout's .wheelhouse: find-links locks by filename, without a hash.
-  # certifi is floored here too: pyproject's constraint never reaches a
-  # --no-project env (#418, docs/DEPLOYMENT.md § TLS trust).
+  # D10, #498: co-core comes from the co-pypi index, each file held to the
+  # lock's sha256 by --locked. The release's own wrapper mints the reader's
+  # token for this one uv, from the key deploy.env names and nothing else; the
+  # token is never in argv, a file or the journal (scripts/co_pypi_token.py).
+  # A pre-#498 commit has no wrapper, and its lock names a .wheelhouse.
+  [[ -f "$release/scripts/co-pypi.sh" ]] ||
+    die "$build has no scripts/co-pypi.sh (a commit before #498); nothing switched"
   creds="$(env_value deploy.env GOOGLE_APPLICATION_CREDENTIALS)"
   [[ -n "$creds" ]] || die "no GOOGLE_APPLICATION_CREDENTIALS in $ENV_DIR/deploy.env; nothing switched"
-  (cd "$release" && GOOGLE_APPLICATION_CREDENTIALS="$creds" \
-    uv run --no-project --with 'google-cloud-storage>=2,<4' --with 'certifi>=2026.10.19' \
-    python scripts/sync_wheelhouse.py) ||
-    die "fetching the private wheels failed for $build; nothing switched"
   # Copied, not hardlinked to the uv cache: the chown below would reach the
   # cache's inodes (processor CR 11, status#14).
-  (cd "$release" && UV_PYTHON_DOWNLOADS=never uv sync --locked --no-dev --compile-bytecode \
+  (cd "$release" && env -u UV_PROJECT_ENVIRONMENT -u VIRTUAL_ENV \
+    ARCHIVER_CO_PYPI_KEY="$creds" UV_PYTHON_DOWNLOADS=never \
+    bash scripts/co-pypi.sh uv sync --locked --no-dev --compile-bytecode \
     --link-mode copy --python "$PYTHON" --quiet) ||
     die "uv sync failed for $build; nothing switched"
-  # The venv holds what it needs; the wheels would cost ~70 MB a release.
-  [[ ! -d "$release/.wheelhouse" ]] ||
-    find "$release/.wheelhouse" -type f ! -name .gitkeep -delete
   heads="$(in_release alembic heads | grep -c .)" || true
   [[ "$heads" == 1 ]] || die "$build has $heads Alembic heads, not 1; nothing switched"
   # D11: a unit naming a module this release lacks fails at its next start,

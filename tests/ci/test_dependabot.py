@@ -6,10 +6,10 @@ missing schedule stops producing PRs without erroring anywhere a person looks,
 and a quiet bot reads like "no updates available". Ported from
 CannObserv/watcher's ``tests/ci/test_dependabot.py``, with broker's exclusion:
 
-* **``github-actions`` only.** ``uv`` waits on #192's blocker 2: co-core
-  resolves only from the private wheelhouse, which Dependabot's updater cannot
-  sync. npm's ``"latest"`` specifiers and ``skills-vendor/``'s deliberate
-  submodule bumps stay out too. Any second block fails here.
+* **``github-actions`` only.** ``uv`` version updates stay out: co-core moves
+  by hand (#454), and uv security updates need no entry (#498, #437). npm's
+  ``"latest"`` specifiers and ``skills-vendor/``'s deliberate submodule bumps
+  stay out too. Any second block fails here.
 * **``context-cadence.yml`` is excluded.** ``install-cadence.sh`` generates it,
   and a re-render reverts any bump made in it (gregoryfoster/skills#373). Its
   pin moves with the installer, so the pin rule reads every *other* workflow.
@@ -131,7 +131,7 @@ def test_only_github_actions_is_configured() -> None:
     ecosystems = [u.get("package-ecosystem") for u in _updates()]
     assert ecosystems == ["github-actions"], (
         f"ecosystems {ecosystems}: #192 ships github-actions alone. A `uv` block "
-        "needs the private wheelhouse reachable from Dependabot's updater; npm "
+        "is #437's decision, after the org registry admits this repo; npm "
         "and gitsubmodule are their own decisions, not this file's"
     )
 

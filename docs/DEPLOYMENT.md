@@ -1,7 +1,7 @@
 # archiver — Deployment & Configuration
 
 Releases and `scripts/deploy.sh`, the service user, reading
-production, wheelhouse reproducibility, Dependabot and the timers. The environment
+production, the co-pypi index, Dependabot and the timers. The environment
 variable reference and the dev server's internals are [ENVIRONMENT.md](ENVIRONMENT.md).
 The host's place on the tailnet - node identity, the ACL, why the service binds
 loopback only (D3) - is [reference/tailscale.md](reference/tailscale.md).
@@ -73,8 +73,8 @@ In order, each step refusing before anything switches:
    10 min; a commit with no run (not the tip of its push) is refused. Unauthenticated: the
    repo is public.
 2. **Build** `releases/<build>`, or reuse a finished one whose venv imports: `git archive`;
-   the release's `scripts/sync_wheelhouse.py` with `GOOGLE_APPLICATION_CREDENTIALS` from
-   `/etc/archiver/deploy.env`; `uv sync --locked --no-dev`; one Alembic head; **every unit's
+   `uv sync --locked --no-dev` through the release's `scripts/co-pypi.sh`, its key named by
+   `/etc/archiver/deploy.env` (§ The co-pypi index); one Alembic head; **every unit's
    `ExecStart` module imports** (D11, the 2026-10-08 failure); read-only; root's; `REVISION`.
    The release `live` runs is never rebuilt in place.
 3. **Rehearse** (D2): `python -m src.core.schema_state`, then `alembic upgrade head`, against
@@ -156,8 +156,8 @@ no longer production's, but it holds editable installs bound to the checkout's p
 linked worktree would re-point ([SKILLS.md](SKILLS.md) § Worktrees).
 
 **`GOOGLE_APPLICATION_CREDENTIALS` belongs in `/etc/archiver/deploy.env` alone** (#341). No
-unit needs it: `deploy.sh` reads it from there, and so do the checkout's wheelhouse recipes
-(CLAUDE.md § Environment & Tooling, SKILLS.md § Worktrees). Until #341 it was in
+unit needs it: `deploy.sh` reads it there and hands it to the release's co-pypi wrapper
+(#498). Until #341 it was in
 `/etc/archiver/.env` too, which put it in every unit's environment. On a VM that still has it
 there, delete the line, then restart: `sudo sed -i '/^GOOGLE_APPLICATION_CREDENTIALS=/d'
 /etc/archiver/.env`, then `scripts/deploy.sh` or `sudo systemctl restart archiver`.
@@ -188,7 +188,7 @@ root. What `exedev` can no longer do without `sudo`:
 
 The units can't read `~exedev` either (`ProtectHome=yes`; the repo `.env` holds the PATs).
 `exedev` keeps `dev.env`, `deploy.env` and `co-pypi-reader.json` (`root:exedev 0640`): the
-deploy's rehearsal and wheel fetch run as `exedev`. `status-checkin.key` was already
+deploy's rehearsal and index token run as `exedev`. `status-checkin.key` was already
 `root:root 0600`, and so is `notifier.key` (archiver#368), loaded by `archiver.service` alone
 and with no fallback: install it before the deploy that adds it
 ([NOTIFICATIONS.md](NOTIFICATIONS.md) § The credential). `exedev` still has passwordless `sudo`, so this is a boundary that
@@ -241,34 +241,33 @@ example.
 `tests/deploy/test_prod_reader.py` checks all of this over the socket and skips on a host
 without the role.
 
-## cannobserv substrate
+## The co-pypi index (archiver#498)
 
-`co-core` + `co-core-aio` (archiver#72/#75; the shared
-Cannabis Observer core library — pure models/utils + async drivers) are declared
-as plain floors and resolved from a local **wheelhouse**
-(`./.wheelhouse`, gitignored) via `[tool.uv] find-links`, mirrored from the private
-GCS index `gs://co-gcs-pypi` by `scripts/sync_wheelhouse.py`. Populate the
-wheelhouse before `uv sync`/`uv run` (AGENTS.md § Environment & Tooling).
+`co-core[extract]` + `co-core-aio` (pure models and utils; async drivers) resolve from
+cannobserv's Artifact Registry index `co-pypi` alone: an `explicit` `[[tool.uv.index]]`,
+a `[tool.uv.sources]` entry each, both declared directly. `uv.lock` holds each file's
+sha256; `--locked` refuses a mismatch. Guard: `tests/test_dependency_index.py`. No
+`cannobserv`/`co-core-sync` (heavy deps).
 
-## Wheelhouse reproducibility
+**A per-command token.** `bash scripts/co-pypi.sh uv <command>` mints an hour's token from
+the `co-pypi-reader` key (`/etc/archiver/co-pypi-reader.json`, or `ARCHIVER_CO_PYPI_KEY`)
+and execs that `uv` with `UV_INDEX_CO_PYPI_USERNAME`/`_PASSWORD`, from an allowlisted
+environment; never in argv, a file or output (`scripts/co_pypi_token.py`). A checkout or
+new worktree syncs that way. CI's syncing jobs get the token by WIF, on the `uv sync
+--locked` step alone; `deploy.sh` runs the release's own wrapper (§ Releases). Only a
+download needs one: `uv run` on a synced venv, `uv lock --check` and `uv audit --frozen`
+don't, so `pre-ship.sh` and `dev_server.sh` mint nothing. After a pull that moves co-core,
+re-sync through the wrapper, or the next `uv run` gets a 401.
 
-Reproducibility is `uv.lock` (pinned version + wheelhouse artifact), not the
-wheelhouse contents. Upgrade: re-sync, then `uv lock --upgrade-package co-core
---upgrade-package co-core-aio`, together: co-core-aio pins co-core to its own minor, so a
-minor move bumps both floors (#397). CI resolves the wheelhouse keyless via Workload
-Identity Federation; `scripts/deploy.sh` fetches it into each release (§ Releases). No git sources and
-no `cannobserv`/`co-core-sync` (heavy google/trello deps). Archiver depends on
-**`co-core[extract]`** + `co-core-aio` — the authoring tools use `co_core_aio.fetch`
-(fetch) and `co_core.pure.extract` (extract + fingerprint); see "Content-acquisition
-via co-core".
+**Upgrade (#454):** `bash scripts/co-pypi.sh uv lock --upgrade-package co-core
+--upgrade-package co-core-aio`, together: co-core-aio pins co-core to its own minor (#397).
 
 ## TLS trust (archiver#418)
 
 httpx and requests verify against **certifi in the release's venv**, not `/etc/ssl`, so
 an OS CA fix reaches none of the units; a deploy does. certifi is transitive: a `[tool.uv]
-constraint-dependencies` floor holds it, and every `uv run --no-project` wheelhouse fetch
-(which that floor doesn't reach) repeats it. `tests/test_certifi_floor.py` checks the constraint,
-the fetches, every tracked `uv.lock` (the SDK's too, #420) and the installed version. For the
+constraint-dependencies` floor holds it, the co-pypi mint's locked env included.
+`tests/test_certifi_floor.py` checks the constraint, any `--no-project --with` env, every tracked `uv.lock` (the SDK's too, #420) and the installed version. For the
 next distrust: raise the floor in each place and `FLOOR`, `uv lock --upgrade-package certifi`
 at the root and in `clients/python/`, deploy, then the advisory's test host must
 fail verification from `/srv/archiver/live/.venv/bin/python -I` with httpx and requests.
@@ -276,8 +275,9 @@ A rollback to a pre-floor release trusts the root again.
 
 ## Dependabot (archiver#192)
 
-`.github/dependabot.yml` bumps the workflows' SHA-pinned actions weekly; `uv` is out (no
-wheelhouse for the updater; § Lock audit covers the locks), the generated
+`.github/dependabot.yml` bumps the workflows' SHA-pinned actions weekly; `uv` version updates are
+out (co-core moves by hand; § Lock audit covers the locks), security updates need the org
+registry to admit this repo (#437). The generated
 `context-cadence.yml` excluded. A bot PR lands
 like any other, merge commit on green CI, with **no CHANGELOG entry and no deploy**: it
 touches only `.github/`. Red at WIF auth: suspect the bot run's credentials, not the bump.
@@ -289,13 +289,13 @@ Read release notes for silent default flips (setup-uv v9 `prune-cache`,
 `.github/workflows/audit.yml` runs `scripts/audit_lock.sh` (push, PR, Mondays): `uv audit
 --frozen` on `uv.lock` and `clients/python/uv.lock`, runtime and dev under separate warning
 titles. **Report-only** and outside `deploy.sh`'s gate: read the annotations. `<lock> runtime
-advisories` → `uv lock --upgrade-package <name>` in that lock's directory (root: wheelhouse
-synced; deploy after). `audit did not run` is never clean. Dev titles stand until a dev
-re-lock. By hand: any checkout, no wheelhouse.
+advisories` → `uv lock --upgrade-package <name>` in that lock's directory (root: through
+`scripts/co-pypi.sh`; deploy after). `audit did not run` is never clean. Dev titles stand until a dev
+re-lock. By hand: any checkout, no token.
 
 ## Power Map SDK (git tag)
 
-`power-map-client` (archiver#304) is **not** a wheelhouse package: it resolves as a uv git
+`power-map-client` (archiver#304) is **not** a co-pypi package: it resolves as a uv git
 source, `https://github.com/CannObserv/power-map.git`, `subdirectory = "clients/python"`, pinned
 to a release tag (`[tool.uv.sources]` in `pyproject.toml`). The repo is public, so no credential;
 `uv.lock` pins the tag's commit. **The CI and deploy hosts need outbound github.com** for
@@ -344,10 +344,7 @@ lines.
 | An agent shell (AGENTS.md § Environment Files) | the repo `.env` | what the command needs |
 | `scripts/pre-ship.sh` | the repo `.env` | `TEST_DATABASE_URL` |
 | `scripts/dev_server.sh` | the repo `.env` | `ARCHIVER_DEV_*`, `TEST_DATABASE_URL` |
-| The wheelhouse sync (AGENTS.md § Environment & Tooling) | `/etc/archiver/deploy.env` | one value, `sed`-read, to that command only |
-
-The wheelhouse line reads its value with `sed`, so the value stays unquoted in
-`deploy.env` by design: `sed` keeps quotes that `load_env` would strip.
+| `scripts/deploy.sh` (§ Releases) | `/etc/archiver/deploy.env` | the key's path, to the co-pypi wrapper alone |
 
 The two scripts share `scripts/lib/env.sh`, which lifts `load_env` and adds
 `load_env_only`: `load_env` runs in a subshell, and only the names matching the allowlist

@@ -199,9 +199,7 @@ tests/test_conftest_guard.py :: docs/DEPLOYMENT.md and the failure message both 
 # variables and the Power Map edge rule are all still inline.
 docs/CONVENTIONS.md :: holds no transaction open (CLAUDE.md § Reading production).
 docs/CONVENTIONS.md :: the rule sits in the file a tightening edits rather than in AGENTS.md.
-docs/DEPLOYMENT.md :: (CLAUDE.md § Environment & Tooling, SKILLS.md § Worktrees). Until #341 it was in
 docs/ENVIRONMENT.md :: `AGENTS.md` keeps the five variables that carry safety rules; the reference
-scripts/sync_wheelhouse.py :: A checkout runs it by hand (AGENTS.md, Environment & Tooling).
 src/dashboard/org_row.py :: ``pm_organizations``, never Power Map (CLAUDE.md's edge rule).
 tests/alembic/test_env_db_safety.py :: ``alembic upgrade`` or ``downgrade`` against production, and CLAUDE.md told
 # test_drift.py lists the policy files as docs-not-code paths; not a pointer.
@@ -408,21 +406,21 @@ scripts/dev_server.sh :: # throwaway, see docs/ENVIRONMENT.md) or runs bus-dorma
 src/core/changes/registry_snapshot.py :: env var can move it with no commit in either repo. ``docs/ENVIRONMENT.
 tests/test_conftest_guard.py :: docs/ENVIRONMENT.md and the failure message both advertise.
 
-# archiver#457: SKILLS.md § Worktrees points at the wheelhouse recipe AGENTS.md still holds.
-docs/SKILLS.md :: CLAUDE.md § Environment & Tooling.
+# archiver#457, re-judged at #498: SKILLS.md § Worktrees points at the co-pypi wrapper recipe AGENTS.md holds.
+docs/SKILLS.md :: wrapper mints (CLAUDE.md § Environment & Tooling).
+
+# archiver#498: the section that replaced "cannobserv substrate" and "Wheelhouse reproducibility"; DEPLOYMENT.md's headings carry their issue.
+docs/DEPLOYMENT.md :: The co-pypi index (archiver#498)
 
 # curate-context-2026-11-07: each points at an AGENTS.md section that still holds what it cites; headings predate this run
 docs/BUS_TRIAGE.md :: Anything that writes targets 8001, never 8000 ([AGENTS.md](../AGENTS.m
 docs/DEPLOYMENT.md :: | An agent shell (AGENTS.md § Environment Files) | the repo `.env` |
-docs/DEPLOYMENT.md :: | The wheelhouse sync (AGENTS.md § Environment & Tooling) | `/etc/arc
 docs/ENVIRONMENT_BUS.md :: Note one more mover: the repo-root `.env` is gitignored and agent-owne
 docs/BUS_CONSUMERS.md :: ## Change-bus consumer - `info.watch-events` (archiver#369)
 docs/BUS_CONSUMERS.md :: ## Triaging the three DLQs (archiver#238, #399)
 docs/NOTIFICATIONS.md :: ## Dispatch on events (archiver#369)
 .github/dependabot.yml :: # CLAUDE.md's no-issue form: "chore: bump actions/checkout from 5.1.0
 alembic/env.py :: "sets it explicitly. See AGENTS.md § Environment Files."
-scripts/audit_lock.sh :: # wheelhouse (CLAUDE.md, Environment & Tooling), which this job has no
-scripts/audit_lock.sh :: fix="Sync the wheelhouse, then uv lock --upgrade-package <name> (CLAUD
 scripts/lib/env.sh :: # eval line upstream's AGENTS.md template uses. On top of it:
 src/core/database.py :: "sets it explicitly. See AGENTS.md § Environment Files."
 src/core/notifications/content.py :: """ISO 8601 with a ``Z`` (AGENTS.md); naive is read as UTC; microsecon

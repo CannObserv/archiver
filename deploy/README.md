@@ -122,28 +122,25 @@ the MainPID's `oom_score_adj`, and skip on any other host. Re-size a floor when
 its unit's `memory.peak` outgrows it, and keep each slice's grant at exactly the
 sum of its children's.
 
-## cannobserv wheelhouse (archiver#72/#75)
+## co-core from the co-pypi index (archiver#498)
 
-`co-core` / `co-core-aio` resolve from `./.wheelhouse` (gitignored), mirrored
-from the private GCS index `gs://co-gcs-pypi` by `scripts/sync_wheelhouse.py`.
-**No unit syncs it any more** (archiver#330 D10): `scripts/deploy.sh` runs the
-release's own copy into the release before `uv sync`, so a start never depends
-on GCS, and removes the wheels once the venv is built.
+`co-core` / `co-core-aio` resolve from cannobserv's Artifact Registry index
+`co-pypi`, each file held to `uv.lock`'s sha256. **No unit fetches anything**
+(archiver#330 D10): `scripts/deploy.sh` builds each release's venv through the
+release's own `scripts/co-pypi.sh`, so a start never depends on the index.
 
 Requirements on the VM:
 
-- A read-only credential at `GOOGLE_APPLICATION_CREDENTIALS` (the
-  `co-pypi-reader@co-gcs` service-account key), named in
-  `/etc/archiver/deploy.env`, which only the deploy reads. Needs only
-  `roles/storage.objectViewer` on the bucket.
-- `uv` (already required) - the sync runs via `uv run --no-project --with
-  'google-cloud-storage>=2,<4'`, so no system Cloud SDK is needed.
+- The read-only `co-pypi-reader@co-gcs` key at
+  `/etc/archiver/co-pypi-reader.json` (`root:exedev 0640`), named in
+  `/etc/archiver/deploy.env` as `GOOGLE_APPLICATION_CREDENTIALS`, which only
+  the deploy reads. It needs `roles/artifactregistry.reader` on `co-pypi`.
+- `uv` (already required). The wrapper mints the token with `google-auth`
+  from `uv.lock`'s `co-pypi` group, so no Cloud SDK is needed.
 
-A checkout or worktree still syncs its own `.wheelhouse` by hand (CLAUDE.md,
-Environment & Tooling).
-
-(CI is keyless instead - the `lint`/`test` jobs authenticate via Workload
-Identity Federation; see `.github/workflows/ci.yml`.)
+A checkout or worktree syncs with `bash scripts/co-pypi.sh uv sync`
+([docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md), The co-pypi index). CI is keyless:
+WIF as the same reader, `.github/workflows/ci.yml`.
 
 ## Redis change bus - archiver's side
 

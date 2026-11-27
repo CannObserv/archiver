@@ -3,12 +3,12 @@
     {
       "name": "agents-guide",
       "path": "./AGENTS.md",
-      "description": "Authoritative project guide for agents and contributors. Project overview (canonical InfoItem + InfoSource + SourceRevision + RepSpec registry, Phase 4 / Archiver v2), full src/ and repo layout, code exploration policy, the cannobserv co-core substrate and wheelhouse workflow, content-acquisition via co-core (no cross-repo mirror discipline), env vars (ARCHIVER_DATABASE_URL, TEST_DATABASE_URL, ARCHIVER_ALLOW_PRODUCTION_DB, ARCHIVER_REDIS_URL and the redis knobs, ARCHIVER_BUS_CONSUMER, ARCHIVER_DEV_REDIS_URL; no outbound HTTP to Watcher (archiver#142)), server lifecycle (port 8000=systemd, 8001=scripts/dev_server.sh), the authoring-tool and assignment endpoint tables with their archiver-client SDK wrappers, the info.changes change-bus producer contract and event versioning convention, error-envelope conventions, commit/changelog conventions, and the data-model vocabulary."
+      "description": "Authoritative project guide for agents and contributors. Project overview (canonical InfoItem + InfoSource + SourceRevision + RepSpec registry, Phase 4 / Archiver v2), full src/ and repo layout, code exploration policy, the cannobserv co-core substrate and the co-pypi index token wrapper, content-acquisition via co-core (no cross-repo mirror discipline), env vars (ARCHIVER_DATABASE_URL, TEST_DATABASE_URL, ARCHIVER_ALLOW_PRODUCTION_DB, ARCHIVER_REDIS_URL and the redis knobs, ARCHIVER_BUS_CONSUMER, ARCHIVER_DEV_REDIS_URL; no outbound HTTP to Watcher (archiver#142)), server lifecycle (port 8000=systemd, 8001=scripts/dev_server.sh), the authoring-tool and assignment endpoint tables with their archiver-client SDK wrappers, the info.changes change-bus producer contract and event versioning convention, error-envelope conventions, commit/changelog conventions, and the data-model vocabulary."
     },
     {
       "name": "readme",
       "path": "./README.md",
-      "description": "Top-level README. Brief description of the Archiver service - sibling to watcher and notifier, consumed via the archiver-client SDK. Run-locally (wheelhouse sync + uv sync + scripts/dev_server.sh), tests, SDK regeneration, admin dashboard, and the optional change-bus publisher. Extraction history (from watcher#149), the 2026-07-18 production-write incident and the dev-server guard that closed it, and pointers to the Phase 4 / Archiver v2 design and implementation plans."
+      "description": "Top-level README. Brief description of the Archiver service - sibling to watcher and notifier, consumed via the archiver-client SDK. Run-locally (scripts/co-pypi.sh uv sync + scripts/dev_server.sh), tests, SDK regeneration, admin dashboard, and the optional change-bus publisher. Extraction history (from watcher#149), the 2026-07-18 production-write incident and the dev-server guard that closed it, and pointers to the Phase 4 / Archiver v2 design and implementation plans."
     },
     {
       "name": "skills-doc",
@@ -38,7 +38,7 @@
     {
       "name": "systemd-unit",
       "path": "./deploy/archiver.service",
-      "description": "Production systemd service unit for the Archiver API. Defines how the live service on port 8000 is launched and restarted and which env files it loads (/etc/archiver/.env). Sets ARCHIVER_ALLOW_PRODUCTION_DB=1 and ARCHIVER_BUS_CONSUMER=1 - the only place that does. ExecStartPre steps sync the co-core wheelhouse and run scripts/check_redis_floor.sh; the broker is a tailnet hop with no local unit to order behind. Carries the memory reservation (archiver#237): MemoryLow=256M and OOMScoreAdjust=-500, granted by deploy/system.slice.d/."
+      "description": "Production systemd service unit for the Archiver API. Defines how the live service on port 8000 is launched and restarted and which env files it loads (/etc/archiver/.env). Sets ARCHIVER_ALLOW_PRODUCTION_DB=1 and ARCHIVER_BUS_CONSUMER=1 - the only place that does. Its ExecStartPre runs scripts/check_redis_floor.sh (co-core is installed at deploy time, never at start); the broker is a tailnet hop with no local unit to order behind. Carries the memory reservation (archiver#237): MemoryLow=256M and OOMScoreAdjust=-500, granted by deploy/system.slice.d/."
     }
   ]
 }

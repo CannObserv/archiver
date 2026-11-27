@@ -15,7 +15,7 @@ CLAUDE.md
 README.md
 CHANGELOG.md
 
-# Dependency surface - docs/DEPLOYMENT.md carries the wheelhouse and resolution story.
+# Dependency surface - docs/DEPLOYMENT.md carries the co-pypi index and resolution story.
 pyproject.toml
 uv.lock
 

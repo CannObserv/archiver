@@ -46,9 +46,9 @@ _REPO_ROOT = Path(__file__).parent.parent
 #: A new outbound integration that follows none of these conventions would slip
 #: past. That is an accepted limit: the failure mode this guards is *forgetting*
 #: the scrub while following house naming, not deliberately evading it. The
-#: in-repo example is ``ARCHIVER_WHEELHOUSE_BUCKET`` (``scripts/sync_wheelhouse.py``),
-#: which addresses a real GCS bucket under a name no suffix here matches - it is
-#: harmless because ``scripts/`` is not among SCANNED_ROOTS and does not run in
+#: in-repo example is ``ARCHIVER_CO_PYPI_KEY`` (``scripts/co_pypi_token.py``),
+#: which names a real service-account key under a name no suffix here matches - it
+#: is harmless because ``scripts/`` is not among SCANNED_ROOTS and does not run in
 #: the test process, but it shows the shape of what this classifier cannot see.
 _OUTBOUND_NAME_SUFFIXES = (
     "_URL",
