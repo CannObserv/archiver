@@ -52,8 +52,12 @@ CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 # upgrade leaves a marker, so the schema reads current afterwards, unless
 # FAKE_SCHEMA_STUCK (a migration that ran and changed nothing).
 STUB_UV = r"""#!/usr/bin/env bash
+steer='^UV_(INDEX|DEFAULT_INDEX|INDEX_URL|EXTRA_INDEX_URL|FIND_LINKS'
+steer+='|INSECURE_HOST|INDEX_STRATEGY|KEYRING_PROVIDER|CONFIG_FILE)='
 echo "uv $PWD ALLOW=${ARCHIVER_ALLOW_PRODUCTION_DB:-} URL=${ARCHIVER_DATABASE_URL:-}" \
-  "GAC=${GOOGLE_APPLICATION_CREDENTIALS:-} PYDL=${UV_PYTHON_DOWNLOADS:-} $*" >> "$FAKE_LOG"
+  "GAC=${GOOGLE_APPLICATION_CREDENTIALS:-} PYDL=${UV_PYTHON_DOWNLOADS:-}" \
+  "STEER=$(env | grep -E "$steer" | tr '\n' ,) $*" \
+  >> "$FAKE_LOG"
 state_dir="$(dirname "$FAKE_LOG")"
 db="${ARCHIVER_DATABASE_URL##*/}"
 case "$*" in
@@ -663,6 +667,28 @@ class TestIndex:
         )
         (wrapped,) = [c for c in world.calls() if c.startswith("co-pypi ")]
         assert f"KEY={GAC} " in wrapped and " PAIR= " in wrapped
+
+    def test_no_caller_variable_steers_where_uv_resolves(self, world):
+        """A shell's index, find-links, insecure host or config file never reaches
+        the build: the lock names every source (#498 CR 4). The wrapper keeps
+        every UV_* variable, so deploy.sh drops these before it."""
+        steering = {
+            name: "x"
+            for name in (
+                "UV_INDEX",
+                "UV_DEFAULT_INDEX",
+                "UV_INDEX_URL",
+                "UV_EXTRA_INDEX_URL",
+                "UV_FIND_LINKS",
+                "UV_INSECURE_HOST",
+                "UV_INDEX_STRATEGY",
+                "UV_KEYRING_PROVIDER",
+                "UV_CONFIG_FILE",
+            )
+        }
+        assert_ok(world.run(**steering))
+        (sync,) = uv_calls(world, " sync --")
+        assert " STEER= " in sync, sync
 
     def test_a_commit_without_the_wrapper_switches_nothing(self, world):
         """A pre-#498 commit: its lock names .wheelhouse, which no deploy fetches now."""

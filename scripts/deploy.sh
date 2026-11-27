@@ -114,6 +114,10 @@ ref="${ref:-origin/main}"
 unset ARCHIVER_DATABASE_URL DATABASE_URL ARCHIVER_DEV_DATABASE_URL \
   ARCHIVER_ALLOW_PRODUCTION_DB GOOGLE_APPLICATION_CREDENTIALS \
   ARCHIVER_CO_PYPI_KEY UV_INDEX_CO_PYPI_USERNAME UV_INDEX_CO_PYPI_PASSWORD
+# Nor where uv resolves, or which host it trusts: the lock names every source,
+# and the co-pypi wrapper passes every UV_* variable on (#498 CR 4).
+unset UV_INDEX UV_DEFAULT_INDEX UV_INDEX_URL UV_EXTRA_INDEX_URL UV_FIND_LINKS \
+  UV_INSECURE_HOST UV_INDEX_STRATEGY UV_KEYRING_PROVIDER UV_CONFIG_FILE
 
 [[ "$(id -u)" -eq 0 ]] && die "run as exedev, not root; the script sudoes where it needs to"
 
