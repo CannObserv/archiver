@@ -179,6 +179,9 @@ async def test_preview_extraction_persistent_tls_read_error_returns_422_target_u
         )
     finally:
         await driver.aclose()
+    # The fake was reached: had co-core stopped building its inner transport as
+    # httpx.AsyncHTTPTransport, the patch would be bypassed and this a real fetch.
+    assert _TlsReadErrorTransport.attempts > 1
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert detail["kind"] == "domain"
