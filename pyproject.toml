@@ -30,6 +30,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    # tests/scripts/test_co_pypi_token.py signs a throwaway key with it (#498);
+    # declared, not borrowed from google-auth's dependencies.
+    "cryptography>=50,<51",
     "openapi-python-client>=0.21,<1",
     "packaging>=24,<27",           # tests/test_certifi_floor.py compares versions (archiver#418)
     "pre-commit>=4.5.1,<5",

@@ -99,6 +99,7 @@ co-pypi = [
     { name = "google-auth", extra = ["requests"] },
 ]
 dev = [
+    { name = "cryptography" },
     { name = "fakeredis" },
     { name = "openapi-python-client" },
     { name = "packaging" },
@@ -140,6 +141,7 @@ requires-dist = [
 browser = [{ name = "playwright", specifier = ">=1.65.2,<1.66" }]
 co-pypi = [{ name = "google-auth", extras = ["requests"], specifier = ">=2,<3" }]
 dev = [
+    { name = "cryptography", specifier = ">=50,<51" },
     { name = "fakeredis", specifier = ">=2.20" },
     { name = "openapi-python-client", specifier = ">=0.21,<1" },
     { name = "packaging", specifier = ">=24,<27" },
