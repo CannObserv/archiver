@@ -7,8 +7,9 @@ until then ``render=True`` raises NotImplementedError.
 
 from dataclasses import dataclass
 
-from co_core.effects.fetch import FetchContent
 from co_core_aio.fetch import AsyncFetchDriver
+
+from src.core.tools.target_fetch import fetch_target
 
 # Body payloads larger than this cap get truncated in the response. The
 # extractor still sees the full bytes server-side; the truncation only bounds
@@ -39,12 +40,16 @@ async def fetch_and_render(
 
     ``render=True`` is reserved for the Playwright fetcher (#3) and raises
     ``NotImplementedError`` until that path is wired. Body bytes are truncated
-    in the response when they exceed ``MAX_BODY_BYTES``.
+    in the response when they exceed ``MAX_BODY_BYTES``. A non-2xx is returned
+    with its ``status_code``, not refused.
+
+    Raises:
+        TargetUnreachableError: on a transport error (#561), via ``fetch_target``.
     """
     if render:
         raise NotImplementedError("Playwright fetcher not yet integrated (#3)")
 
-    result = await driver.execute(FetchContent(url))
+    result = await fetch_target(driver, url)
     total_bytes = len(result.content)
     truncated = total_bytes > MAX_BODY_BYTES
     payload = result.content[:MAX_BODY_BYTES] if truncated else result.content

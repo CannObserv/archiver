@@ -99,7 +99,7 @@ def sync_detailed(
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_source_spec`` + ``fetch_and_render`` + the extractor
+    Composes ``validate_source_spec`` + a 2xx-only fetch + the extractor
     Processor would dispatch for the response's media type (RSS/Atom: one line
     per item) + the canonical-text fingerprint, so an authoring agent can verify
     the spec yields the expected content before persisting.
@@ -144,7 +144,7 @@ def sync(
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_source_spec`` + ``fetch_and_render`` + the extractor
+    Composes ``validate_source_spec`` + a 2xx-only fetch + the extractor
     Processor would dispatch for the response's media type (RSS/Atom: one line
     per item) + the canonical-text fingerprint, so an authoring agent can verify
     the spec yields the expected content before persisting.
@@ -184,7 +184,7 @@ async def asyncio_detailed(
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_source_spec`` + ``fetch_and_render`` + the extractor
+    Composes ``validate_source_spec`` + a 2xx-only fetch + the extractor
     Processor would dispatch for the response's media type (RSS/Atom: one line
     per item) + the canonical-text fingerprint, so an authoring agent can verify
     the spec yields the expected content before persisting.
@@ -227,7 +227,7 @@ async def asyncio(
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_source_spec`` + ``fetch_and_render`` + the extractor
+    Composes ``validate_source_spec`` + a 2xx-only fetch + the extractor
     Processor would dispatch for the response's media type (RSS/Atom: one line
     per item) + the canonical-text fingerprint, so an authoring agent can verify
     the spec yields the expected content before persisting.

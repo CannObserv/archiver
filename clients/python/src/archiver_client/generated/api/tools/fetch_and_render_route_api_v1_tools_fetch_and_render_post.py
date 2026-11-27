@@ -95,7 +95,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: FetchAndRenderRequest,
 ) -> Response[EnvelopeResponse | FetchAndRenderResult]:
-    """Fetch And Render Route
+    r"""Fetch And Render Route
 
      Fetch a target URL and return its body + headers for downstream tools.
 
@@ -103,6 +103,12 @@ def sync_detailed(
     pipe the body into ``propose_selectors`` or ``preview_extraction``). Body
     payloads larger than 5 MiB are truncated; ``truncated`` flags the case.
     ``render=True`` returns 501 until the Playwright fetcher (#3) lands.
+
+    A target that answers, with any status, is a 200: a non-2xx is reported in
+    ``status_code``, not refused. A fetch that fails (DNS, a refused connection,
+    a timeout, a TLS error that outlasts the retries) returns 422 with the
+    standard error envelope, ``kind=\"domain\"`` and ``code`` ``target_unreachable``
+    at ``/url``, as ``preview-extraction`` and ``propose-selectors`` do (#561).
 
     Args:
         body (FetchAndRenderRequest): Request body for POST /api/v1/tools/fetch-and-render.
@@ -131,7 +137,7 @@ def sync(
     client: AuthenticatedClient,
     body: FetchAndRenderRequest,
 ) -> EnvelopeResponse | FetchAndRenderResult | None:
-    """Fetch And Render Route
+    r"""Fetch And Render Route
 
      Fetch a target URL and return its body + headers for downstream tools.
 
@@ -139,6 +145,12 @@ def sync(
     pipe the body into ``propose_selectors`` or ``preview_extraction``). Body
     payloads larger than 5 MiB are truncated; ``truncated`` flags the case.
     ``render=True`` returns 501 until the Playwright fetcher (#3) lands.
+
+    A target that answers, with any status, is a 200: a non-2xx is reported in
+    ``status_code``, not refused. A fetch that fails (DNS, a refused connection,
+    a timeout, a TLS error that outlasts the retries) returns 422 with the
+    standard error envelope, ``kind=\"domain\"`` and ``code`` ``target_unreachable``
+    at ``/url``, as ``preview-extraction`` and ``propose-selectors`` do (#561).
 
     Args:
         body (FetchAndRenderRequest): Request body for POST /api/v1/tools/fetch-and-render.
@@ -162,7 +174,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: FetchAndRenderRequest,
 ) -> Response[EnvelopeResponse | FetchAndRenderResult]:
-    """Fetch And Render Route
+    r"""Fetch And Render Route
 
      Fetch a target URL and return its body + headers for downstream tools.
 
@@ -170,6 +182,12 @@ async def asyncio_detailed(
     pipe the body into ``propose_selectors`` or ``preview_extraction``). Body
     payloads larger than 5 MiB are truncated; ``truncated`` flags the case.
     ``render=True`` returns 501 until the Playwright fetcher (#3) lands.
+
+    A target that answers, with any status, is a 200: a non-2xx is reported in
+    ``status_code``, not refused. A fetch that fails (DNS, a refused connection,
+    a timeout, a TLS error that outlasts the retries) returns 422 with the
+    standard error envelope, ``kind=\"domain\"`` and ``code`` ``target_unreachable``
+    at ``/url``, as ``preview-extraction`` and ``propose-selectors`` do (#561).
 
     Args:
         body (FetchAndRenderRequest): Request body for POST /api/v1/tools/fetch-and-render.
@@ -196,7 +214,7 @@ async def asyncio(
     client: AuthenticatedClient,
     body: FetchAndRenderRequest,
 ) -> EnvelopeResponse | FetchAndRenderResult | None:
-    """Fetch And Render Route
+    r"""Fetch And Render Route
 
      Fetch a target URL and return its body + headers for downstream tools.
 
@@ -204,6 +222,12 @@ async def asyncio(
     pipe the body into ``propose_selectors`` or ``preview_extraction``). Body
     payloads larger than 5 MiB are truncated; ``truncated`` flags the case.
     ``render=True`` returns 501 until the Playwright fetcher (#3) lands.
+
+    A target that answers, with any status, is a 200: a non-2xx is reported in
+    ``status_code``, not refused. A fetch that fails (DNS, a refused connection,
+    a timeout, a TLS error that outlasts the retries) returns 422 with the
+    standard error envelope, ``kind=\"domain\"`` and ``code`` ``target_unreachable``
+    at ``/url``, as ``preview-extraction`` and ``propose-selectors`` do (#561).
 
     Args:
         body (FetchAndRenderRequest): Request body for POST /api/v1/tools/fetch-and-render.

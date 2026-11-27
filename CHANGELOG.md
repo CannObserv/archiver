@@ -20,6 +20,17 @@ service-only patch does not require an SDK bump. Each SDK version from 5.19.0 is
 annotated git tag `sdk-v<version>` that off-VM consumers pin (archiver#409,
 `clients/python/README.md` § Releases and tags).
 
+## v4.49.2 (2026-11-27)
+
+[service] **`POST /tools/fetch-and-render` answers 422 `target_unreachable` for an unreachable target, not 500** (archiver#561, closing #445's open question). No migration. SDK unchanged (5.19.0): the regenerated client and the hand-written `fetch_and_render` wrappers move docstrings only.
+
+- **A failed fetch is a 422.** That covers a DNS failure, a refused connection, a timeout, and a TLS error that outlasts the retries. The answer is `kind="domain"`, with `target_unreachable` at `/url`. Its message is the transport error's text, or the error class's name when that's empty (`ReadTimeout`).
+  - It used to be a 500 `kind="server"` with a traceback in the journal.
+  - `preview-extraction` and `propose-selectors` already answered this way (#473), so all three tools now agree.
+- **A target that answers keeps the 200,** whatever the status. A 404 or a 403 bot challenge is still a 200 with `status_code` in the body. The route gets no `target_http_error`: it's the raw inspection tool.
+- **`render=True` is still a 501,** returned before any fetch.
+- Also in this release: `preview-extraction`'s description no longer says it composes `fetch_and_render`. It has fetched through the 2xx gate since #473.
+
 ## v4.49.1 (2026-11-27)
 
 [service] **co-core 0.38.0 → 0.53.4, which relocks soupsieve 2.10 → 4.1.3** (archiver#454, closing #507 and #445). No migration. Routes, schemas and `archiver-client` are unchanged, so there's no SDK bump. Only the OpenAPI snapshot's `info.version` moves.
