@@ -31,7 +31,7 @@ annotated git tag `sdk-v<version>` that off-VM consumers pin (archiver#409,
   - **Two `:has()` forms are now refused,** following CSS's strict rules (soupsieve 3.0): a complex selector inside `:has()` (`div:has(p a)`), and a `:has()` nested in another. Both get the same 422 at `/extraction` as any uncompilable selector. No production spec uses `:has(`.
   - **Selectors no longer descend into a `<template>`.**
 - **Extraction output is unchanged:** all 22 production sources' bodies give the same preview fingerprint and chunk count on both locks.
-- **The RepSpec alias error quotes co-core's new pattern text** (cannobserv#763). A refused `credentials_alias` on `POST /rep-specs` or `PATCH /rep-specs/{id}` names the pattern as `…[a-z0-9-]*(?![\s\S])`, where it read `…$`. The same values are accepted and refused.
+- **The RepSpec alias error quotes co-core's new pattern text** (cannobserv#763). A refused `credentials_alias` now quotes the pattern as `…[a-z0-9-]*(?![\s\S])`, where it read `…$`. That holds wherever a RepSpec is validated: `POST /rep-specs`, `PATCH /rep-specs/{id}`, `POST /tools/validate-rep-spec`, `POST /info-items/{id}/rep-spec-assignments` and the dashboard's RepSpec forms. The same values are accepted and refused.
 - **The replicate issuer's Emit refuses an alias off `<provider>-<role>`, or one naming another provider** (cannobserv#495). The RepSpec save already refuses both. One that reached issuance anyway would be a `skipped` command with reason `unsupported_command`, not an error.
 - **Nothing else moves in `uv.lock`.** redis stays 7.4.1.
 
