@@ -1133,7 +1133,11 @@ def _watch_status_state(info_item_id: str = "item-w") -> dict:
 
 
 def _fetch_policy_state(host: str = "example.test") -> dict:
-    """A full ``fetch_policy`` config/state payload (cannobserv#285)."""
+    """A full ``fetch_policy`` config/state payload (cannobserv#285).
+
+    ``generation`` is required on decode since co-core 0.53 (cannobserv#629): a
+    frame without one is poison, so the drain's round trip would refuse it.
+    """
     return {
         "schema_version": 1,
         "event_type": "fetch_policy",
@@ -1141,6 +1145,7 @@ def _fetch_policy_state(host: str = "example.test") -> dict:
         "host": host,
         "min_interval_seconds": 2.5,
         "revoked": False,
+        "generation": 1,
     }
 
 
