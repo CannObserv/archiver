@@ -429,18 +429,16 @@ async def test_unsupported_provider_is_skipped_not_raised(session, info_source):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("provider", "alias"),
-    [("gcs", "primary"), ("gcs", "default"), ("gcs", "gdrive-publication")],
+    "alias",
+    ["primary", "default", "gdrive-publication"],
     ids=["legacy-primary", "off-rule", "names-another-provider"],
 )
-async def test_an_alias_the_emit_refuses_is_skipped_not_raised(
-    session, info_source, provider, alias
-):
+async def test_an_alias_the_emit_refuses_is_skipped_not_raised(session, info_source, alias):
     """co-core 0.40.0 (cannobserv#495): the Emit refuses an alias off
     ``<provider>-<role>`` or naming another provider. The save-time check keeps
     one out of a RepSpec; one that reaches issuance anyway is a skip row."""
     await _assigned_item(
-        session, info_source, document=_document(provider=provider, credentials_alias=alias)
+        session, info_source, document=_document(provider="gcs", credentials_alias=alias)
     )
     revision = await _revision(session, info_source)
 
