@@ -445,10 +445,12 @@ def _issue_one(
             info_source_id=str(revision.info_source_id),
         )
     except ValidationError as e:
-        # The Emit variant pins ``provider`` to a Literal, so an unsupported one
-        # fails here rather than dead-lettering in the drain loop. Recorded as a
-        # skip: this runs inside the content.revisions consumer's transaction,
-        # and one unsupported RepSpec must not cost the revision.
+        # The Emit variant pins ``provider`` to a Literal and, since co-core 0.40
+        # (cannobserv#495), refuses a ``credentials_alias`` off the
+        # ``<provider>-<role>`` rule or naming another provider. Either fails here
+        # rather than dead-lettering in the drain loop. Recorded as a skip: this
+        # runs inside the content.revisions consumer's transaction, and one
+        # unsupported RepSpec must not cost the revision.
         _record_skips(
             session,
             revision,

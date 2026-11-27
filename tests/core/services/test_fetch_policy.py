@@ -86,9 +86,9 @@ def test_topic_is_co_cores():
 
 @pytest.mark.parametrize("generation", [None, -1, "7", 1.5, True])
 def test_build_policy_refuses_a_frame_without_an_integer_generation(generation):
-    """``FetchPolicyEmit`` accepts ``generation=None`` until cannobserv#579, and a
-    frame without one is dropped silently by every consumer that holds an
-    ordered frame. So the one builder refuses it."""
+    """``FetchPolicyEmit`` requires a generation (cannobserv#579), and a consumer
+    seeks past a frame without one as poison (cannobserv#629). The one builder
+    refuses a missing or non-integer one before co-core does."""
     with pytest.raises((TypeError, ValueError)):
         build_policy(host=HOST, generation=generation, min_interval_seconds=1.0, revoked=False)
 

@@ -20,6 +20,21 @@ service-only patch does not require an SDK bump. Each SDK version from 5.19.0 is
 annotated git tag `sdk-v<version>` that off-VM consumers pin (archiver#409,
 `clients/python/README.md` § Releases and tags).
 
+## v4.49.1 (2026-11-27)
+
+[service] **co-core 0.38.0 → 0.53.4, which relocks soupsieve 2.10 → 4.1.3** (archiver#454, closing #507 and #445). No migration. Routes, schemas and `archiver-client` are unchanged, so there's no SDK bump. Only the OpenAPI snapshot's `info.version` moves.
+
+- **A TLS error while reading the target's answer is a 422, not a 500** (cannobserv#597, archiver#445). The example is `DECRYPTION_FAILED_OR_BAD_RECORD_MAC`. It used to escape as a raw `ssl.SSLError`. It now arrives as `httpx.ReadError`, and the GET retries it up to three times.
+  - **`preview-extraction` and `propose-selectors`:** if the error persists, both answer **422** `kind="domain"`, with `target_unreachable` at `/url`. Its message is OpenSSL's text, which varies by build.
+  - **`fetch-and-render`:** it still answers 500 when the error persists. A one-off error is retried on all three routes.
+- **soupsieve 4.1.3 fixes the Dependabot alerts for GHSA-mmhr-3c5m-f64f** (high), GHSA-8jvp-3x96-xpqw and GHSA-f3mv-fm3p-593v (cannobserv#667, archiver#507).
+  - **Two `:has()` forms are now refused,** following CSS's strict rules (soupsieve 3.0): a complex selector inside `:has()` (`div:has(p a)`), and a `:has()` nested in another. Both get the same 422 at `/extraction` as any uncompilable selector. No production spec uses `:has(`.
+  - **Selectors no longer descend into a `<template>`.**
+- **Extraction output is unchanged:** all 22 production sources' bodies give the same preview fingerprint and chunk count on both locks.
+- **The RepSpec alias error quotes co-core's new pattern text** (cannobserv#763). A refused `credentials_alias` now quotes the pattern as `…[a-z0-9-]*(?![\s\S])`, where it read `…$`. That holds wherever a RepSpec is validated: `POST /rep-specs`, `PATCH /rep-specs/{id}`, `POST /tools/validate-rep-spec`, `POST /info-items/{id}/rep-spec-assignments` and the dashboard's RepSpec forms. The same values are accepted and refused.
+- **The replicate issuer's Emit refuses an alias off `<provider>-<role>`, or one naming another provider** (cannobserv#495). The RepSpec save already refuses both. One that reached issuance anyway would be a `skipped` command with reason `unsupported_command`, not an error.
+- **Nothing else moves in `uv.lock`.** redis stays 7.4.1.
+
 ## v4.49.0 (2026-11-24)
 
 [service] **The occasion key `source_revision.date` is now `source_revision.date_label`** (archiver#523, cannobserv#703). Migration `e4897ee850d9`. SDK unchanged (5.19.0). No destination moves: the key renders the same `YYYY-MM-DD` (UTC) bytes under its new name.

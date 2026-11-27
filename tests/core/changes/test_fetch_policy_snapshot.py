@@ -110,7 +110,7 @@ async def test_full_set_covers_live_suspended_and_deleted_hosts(
 
 @pytest.mark.asyncio
 async def test_every_frame_carries_a_generation(session_factory, publisher, fake_redis):
-    """The guard: FetchPolicyEmit would accept None until cannobserv#579."""
+    """Every frame is ordered: a consumer seeks past one without (cannobserv#629)."""
     await _seed(session_factory)
     await publish_full_policy_set(session_factory=session_factory, publisher=publisher)
     frames = await _frames(fake_redis)

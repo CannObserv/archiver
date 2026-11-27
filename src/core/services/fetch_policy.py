@@ -23,8 +23,9 @@ interval, never a fake number. A deleted host publishes the same, from
 **Generations** (co-core ``FetchPolicyState``'s three producer obligations):
 
 1. **On every frame**, tombstones and full sets included. ``FetchPolicyEmit``
-   accepts ``None`` until cannobserv#579, and a frame without one is dropped
-   silently once the host holds an ordered frame - so ``build_policy`` refuses it.
+   requires it (co-core 0.41, cannobserv#579), and since 0.53 (cannobserv#629) a
+   consumer seeks past a frame without one as poison. ``build_policy`` also
+   refuses a non-integer before co-core sees it.
 2. **Drawn atomically**: ``UPDATE … SET fetch_policy_generation =
    nextval(…) RETURNING``, never read-modify-write.
 3. **Never backwards for a host**: one sequence for every host, deletes
