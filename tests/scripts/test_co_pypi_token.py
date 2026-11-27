@@ -267,8 +267,11 @@ def test_the_shell_wrapper_runs_the_locked_group_isolated_from_the_allowlist(fak
     assert env[cp.KEY_VAR] == READER, "the mint's one input"
     # This tree's lock, its one group, never resolved at run time; in a
     # throwaway env, never the project's .venv (a release's, under deploy.sh).
-    assert argv[:7] == [
+    # Quiet: installing the group must not break the wrapped command's own
+    # --quiet (deploy.sh's sync); errors still print.
+    assert argv[:8] == [
         "run",
+        "--quiet",
         "--project",
         str(REPO),
         "--isolated",
@@ -276,7 +279,7 @@ def test_the_shell_wrapper_runs_the_locked_group_isolated_from_the_allowlist(fak
         "--only-group",
         "co-pypi",
     ]
-    assert argv[7:] == ["python", str(MODULE), "uv", "sync", "--locked"]
+    assert argv[8:] == ["python", str(MODULE), "uv", "sync", "--locked"]
 
 
 def test_the_shell_wrapper_allowlist_matches_the_python_one():

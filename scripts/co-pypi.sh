@@ -13,7 +13,9 @@
 # (tests/scripts/test_co_pypi_token.py). That module's own dependency is uv.lock's
 # co-pypi group: --frozen, never resolved at run time; --isolated, in a throwaway
 # env, so a release's .venv is built by its own sync alone (scripts/deploy.sh
-# runs this in the release, D10). The wrapped uv runs where this was called from.
+# runs this in the release, D10); --quiet, so installing that group leaves the
+# wrapped command's own output (a --quiet sync's) as it was; errors still print.
+# The wrapped uv runs where this was called from.
 # Details: that module's docstring and docs/DEPLOYMENT.md, The co-pypi index.
 set -euo pipefail
 
@@ -29,5 +31,5 @@ while IFS= read -r name; do
 done < <(compgen -e)
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec env -i "${keep[@]}" uv run --project "$(dirname "$HERE")" --isolated --frozen --only-group co-pypi \
+exec env -i "${keep[@]}" uv run --quiet --project "$(dirname "$HERE")" --isolated --frozen --only-group co-pypi \
   python "$HERE/co_pypi_token.py" "$@"
