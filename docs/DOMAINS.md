@@ -93,9 +93,9 @@ grouplessly from `0-0` by Replicator through co-core's `fetch_policy_supersedes`
 
 `domains.fetch_policy_generation BIGINT NOT NULL`, on every frame (cannobserv#566):
 co-core's `FetchPolicyEmit` requires it (0.41, cannobserv#579), a consumer seeks past a frame
-without one as poison (0.53, cannobserv#629), and `build_policy` refuses a non-integer first. One sequence,
-`fetch_policy_generation_seq`, never a per-row counter: a hostname is reusable, so a re-added host
-must draw above its own tombstone.
+without one as poison (0.53, cannobserv#629), and `build_policy` refuses a non-integer first.
+One sequence, `fetch_policy_generation_seq`, never a per-row counter: a hostname is reusable, so a
+re-added host must draw above its own tombstone.
 
 - **When it draws:** `announce_domain`, when the frame changes or the row is new. An interval save
   on a live host and a suspension flip draw; notes, the cadence, and an interval save on a
