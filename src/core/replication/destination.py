@@ -223,6 +223,9 @@ class RenderOccasion:
             return self.source_revision_id
         if key == "fingerprint":
             return self.content_fingerprint
+        # Unreachable today: a naive captured_at is refused first and it is never
+        # None, so co-core renders every date key. Kept as the fallback should
+        # rendered() start leaving one out.
         return self.captured_at
 
 
