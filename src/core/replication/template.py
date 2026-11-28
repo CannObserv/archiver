@@ -33,36 +33,22 @@ from __future__ import annotations
 import re
 from typing import TypedDict
 
+from co_core.pure.storage import SourceRevisionVars
+
 from src.core.replication.errors import ReplicationRenderError
 
 # The namespace supplied by the replication occasion rather than by the
 # InfoItem's rep_fields bag. Reserved: it may not appear in required_fields.
 OCCASION_NAMESPACE = "source_revision"
 
-# Closed vocabulary — exactly what src.core.replication.destination supplies.
-# Adding a key here without teaching the renderer to resolve it would let a
-# template validate and then fail to render, which is the drift this module's
-# single-parser rule exists to prevent.
-#
-# ``year``, ``date_segment``, ``datetime_time_segment`` and ``ext`` (archiver#205)
-# are spelled and formatted exactly as the storage framework's ``_DateProps`` /
-# ``FileVars`` render them, so a template copied verbatim from its
-# ``defaults.toml`` (the canonical ``organizations/…/infoitems/`` layout, epic
-# #207) renders the same key on both sides. ``date_label`` (``%Y-%m-%d``) is that
-# vocabulary's name for the string this key used to call ``date``; archiver#523
-# renamed it with no alias, because one spelling gets one name.
-OCCASION_KEYS = frozenset(
-    {
-        "id",
-        "date_label",
-        "fingerprint",
-        "captured_at",
-        "year",
-        "date_segment",
-        "datetime_time_segment",
-        "ext",
-    }
-)
+# The closed vocabulary is co-core's ``SourceRevisionVars.RENDER_KEYS``
+# (archiver#529, cannobserv#703), the one home of the ``source_revision.*`` keys,
+# and ``src.core.replication.destination`` renders exactly that set through
+# ``SourceRevisionVars.rendered()``. Reading one constant on both sides is what
+# keeps the gate and the renderer from drifting. A key co-core adds is accepted
+# here on the bump that brings it, so ``tests.core.replication.test_template``
+# pins the set: a change to it is a red test at bump time, never a silent widening
+# of what frozen documents may name.
 
 # The subset that makes a rendered path distinct per occasion (R2). ``date_label``
 # is deliberately absent — it is the collision case, not a discriminator.
@@ -153,14 +139,14 @@ def validate_path_template(template: str, *, required_fields: list[str]) -> list
     declared = set(required_fields)
     for namespace, key in placeholders:
         if namespace == OCCASION_NAMESPACE:
-            if key not in OCCASION_KEYS:
+            if key not in SourceRevisionVars.RENDER_KEYS:
                 errors.append(
                     {
                         "path": "/path_template",
                         "message": (
                             f"{namespace}.{key} is not a value the renderer supplies; "
                             f"the {OCCASION_NAMESPACE} namespace holds "
-                            f"{sorted(OCCASION_KEYS)}"
+                            f"{sorted(SourceRevisionVars.RENDER_KEYS)}"
                         ),
                     }
                 )

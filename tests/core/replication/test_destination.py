@@ -10,13 +10,23 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from co_core.pure.storage import (
+    FileVars,
+    InformationItemVars,
+    OrgVars,
+    SourceRevisionVars,
+    StorageConfig,
+    StorageContext,
+    StorageLocationKey,
+    StorageProvider,
+)
 from co_core.pure.util.files import (
     _FALLBACK_MEDIA_EXTENSION,
     _MEDIA_TYPE_EXTENSIONS,
     extension_for_media_type,
 )
 
-from src.core.rep_fields import OrgValues
+from src.core.rep_fields import OrgValues, effective_rep_fields
 from src.core.replication import destination
 from src.core.replication.destination import (
     EXAMPLE_REVISION_ID,
@@ -29,7 +39,6 @@ from src.core.replication.destination import (
     UnsafeDestinationError,
     assert_distinct_destinations,
     example_occasion,
-    extension_for,
     find_collisions,
     probe_destination,
     render_destination,
@@ -525,8 +534,8 @@ def _assert_usable_segment(ext: str, context: object) -> None:
     assert ext not in destination._REFUSED_SEGMENTS, (context, ext)
 
 
-def test_extension_for_is_co_cores_table_and_not_a_second_copy():
-    """``extension_for`` delegates and adds nothing (archiver#210).
+def test_occasion_ext_is_co_cores_table_and_not_a_second_copy():
+    """The occasion's ``ext`` is co-core's table and adds nothing (archiver#210, #529).
 
     Not a cross-table agreement check: after the delegation there is one table,
     so the equality below holds by construction and can only break if a local
@@ -541,11 +550,21 @@ def test_extension_for_is_co_cores_table_and_not_a_second_copy():
     framework cannot find.
     """
     for media_type in _MEDIA_TYPES_CHECKED:
-        assert extension_for(media_type) == extension_for_media_type(media_type), media_type
+        ext = _occasion(source_media_type=media_type).values()["ext"]
+        assert ext == extension_for_media_type(media_type), media_type
+
+
+def test_the_extension_for_wrapper_is_gone():
+    """``ext`` comes from ``SourceRevisionVars`` now (#529), so the wrapper had no caller.
+
+    A wrapper with no caller is a second spelling of the agreement the test
+    above guards, and the next reader would wonder which one the renderer uses.
+    """
+    assert not hasattr(destination, "extension_for")
 
 
 def test_every_entry_in_co_cores_table_is_a_usable_path_segment():
-    """The charset claim in ``extension_for``'s docstring, pinned at its source (CR 8).
+    """The charset claim the occasion's ``ext`` relies on, pinned at its source (CR 8).
 
     ``_EXTENSION_SAFE`` used to enforce this locally and was deleted with the
     table, so the property is now a fact about another repository's data that
@@ -571,7 +590,7 @@ def test_every_extension_co_core_yields_is_a_usable_path_segment():
     parameter-stripping, case-folding, ``None`` and the unregistered fallback.
     """
     for media_type in _MEDIA_TYPES_CHECKED:
-        _assert_usable_segment(extension_for(media_type), media_type)
+        _assert_usable_segment(extension_for_media_type(media_type), media_type)
 
 
 def test_no_local_extension_table_survives():
@@ -651,11 +670,13 @@ def test_probe_resolves_slugs_the_same_way():
 
 # --- the golden rendering the epic was approved on (archiver#207) ---
 
-CANONICAL_LAYOUT = (
-    "organizations/{org.title_slug}/infoitems/{info_item.name_slug}/{source_revision.year}/"
-    "{source_revision.datetime_time_segment}-{info_item.name_slug}-{source_revision.id}"
-    ".{source_revision.ext}"
-)
+# co-core's ``infoitem_revision`` location, read from its defaults rather than
+# copied here (archiver#529). The expected key below stays a literal: it is what
+# the epic approved, and the test pins that co-core's layout still renders it.
+_INFOITEM_REVISION = StorageLocationKey.INFOITEM_REVISION
+_GCS = StorageConfig.defaults().providers["gcs"]
+_LOC = _GCS.locations[_INFOITEM_REVISION]
+CANONICAL_LAYOUT = f"{_LOC.path_template}/{_LOC.filename_template}"
 
 
 def test_the_canonical_layout_renders_the_approved_key():
@@ -678,3 +699,191 @@ def test_the_canonical_layout_renders_the_approved_key():
         "public_hearings_and_outreach/2026/"
         "2026_09_09-18_54_02-public_hearings_and_outreach-01M23RDZKZS6FSPP1YZFBEQB2R.html"
     )
+
+
+# --- co-core parity: one vocabulary, one layout (archiver#529, cannobserv#703) ---
+#
+# cannobserv#725 deletes its "Archiver-Rendered Locations" exception on the
+# strength of these: Archiver's renderer and co-core's ``StorageProvider`` give
+# one key for one revision.
+
+_PARITY_OCCASIONS = [
+    pytest.param(
+        "01M23RDZKZS6FSPP1YZFBEQB2R",
+        datetime(2026, 9, 9, 18, 54, 2, tzinfo=UTC),
+        "text/html",
+        id="utc-html",
+    ),
+    pytest.param(
+        "01M26HZ3SAC8SY8S7Q2E9HJVXR",
+        datetime(2026, 11, 27, 20, 0, 0, tzinfo=timezone(timedelta(hours=-8))),
+        "application/pdf",
+        id="west-of-utc-across-midnight-pdf",
+    ),
+    pytest.param(
+        "01JZZZZZZZZZZZZZZZZZZZZZZZ",
+        datetime(2026, 1, 1, 0, 30, 0, 999999, tzinfo=timezone(timedelta(hours=4))),
+        "text/html; charset=utf-8",
+        id="east-of-utc-across-new-year-params",
+    ),
+    pytest.param(
+        "01JZZZZZZZZZZZZZZZZZZZZZZZ",
+        datetime(2026, 8, 7, 3, 4, 5, tzinfo=UTC),
+        None,
+        id="no-media-type",
+    ),
+]
+
+
+def _co_core_vars(revision_id, captured_at, media_type) -> SourceRevisionVars:
+    return SourceRevisionVars(
+        revision_id=revision_id,
+        content_fingerprint=FINGERPRINT,
+        media_type=media_type or "",
+        dt=captured_at,
+    )
+
+
+@pytest.mark.parametrize(("revision_id", "captured_at", "media_type"), _PARITY_OCCASIONS)
+def test_occasion_values_are_co_cores_rendered(revision_id, captured_at, media_type):
+    """``values()`` is ``SourceRevisionVars.rendered()``: every key, every byte (#529)."""
+    occasion = RenderOccasion(
+        source_revision_id=revision_id,
+        content_fingerprint=FINGERPRINT,
+        captured_at=captured_at,
+        source_media_type=media_type,
+    )
+    expected = _co_core_vars(revision_id, captured_at, media_type).rendered()
+    assert occasion.values() == expected
+    assert set(expected) == SourceRevisionVars.RENDER_KEYS
+
+
+@pytest.mark.parametrize(("revision_id", "captured_at", "media_type"), _PARITY_OCCASIONS)
+def test_infoitem_revision_renders_one_key_through_both_renderers(
+    revision_id, captured_at, media_type
+):
+    """co-core's ``StorageProvider`` and ``render_destination`` agree on the layout (#529).
+
+    The same revision, org title and item name go through ``ContextMap`` (via
+    ``StorageProvider.location``) and through Archiver's own renderer, with
+    the slugs derived on each side by its own code. One key comes out.
+    """
+    title = "Washington State Liquor and Cannabis Board"
+    name = "Public Hearings & Outreach"
+    context = StorageContext(
+        org=OrgVars(title=title),
+        info_item=InformationItemVars(name=name),
+        source_revision=_co_core_vars(revision_id, captured_at, media_type),
+        # The opt-in that makes a location render its filename_template.
+        file=FileVars(),
+    )
+    co_core_key = (
+        StorageProvider("gcs", _GCS, bucket="parity")
+        .location(_INFOITEM_REVISION, context)
+        .gcs_blob_name
+    )
+
+    archiver_key = render_destination(
+        CANONICAL_LAYOUT,
+        rep_fields={"org": {"title": title}, "info_item": {"name": name}},
+        occasion=RenderOccasion(
+            source_revision_id=revision_id,
+            content_fingerprint=FINGERPRINT,
+            captured_at=captured_at,
+            source_media_type=media_type,
+        ),
+        org=None,
+    )
+
+    assert archiver_key == co_core_key
+
+
+@pytest.mark.parametrize(
+    ("title", "name"),
+    [
+        ("Liquor & Cannabis Board", "Public Hearings and Outreach"),
+        ("WSLCB - Meeting Schedule", "Café Résumé"),
+        ("  Board   of  Health ", "Rules: 2026/27 (draft)"),
+    ],
+)
+def test_rep_fields_slugs_equal_co_cores_vars_slugs(title, name):
+    """``org.title_slug`` and ``info_item.name_slug`` are the ``*Vars`` slugs (#206, #529).
+
+    Both sides call ``normalize_string``. This pins that neither puts a step
+    in front of it. Checked from a stored bag and from a linked org, the two
+    ways ``org.title`` reaches the bag (#303).
+    """
+    from_bag = effective_rep_fields({"org": {"title": title}, "info_item": {"name": name}}, None)
+    from_org = effective_rep_fields(
+        {"info_item": {"name": name}}, OrgValues(name=title, acronym=None)
+    )
+
+    for bag in (from_bag, from_org):
+        assert bag["org"]["title_slug"] == OrgVars(title=title).title_slug
+        assert bag["info_item"]["name_slug"] == InformationItemVars(name=name).name_slug
+
+
+def test_the_keys_co_core_added_render():
+    """``month``, ``day`` and ``day_unpadded`` arrive with the adoption (#529), in UTC."""
+    rendered = render_destination(
+        "{source_revision.month}/{source_revision.day}/{source_revision.day_unpadded}/"
+        "{source_revision.id}",
+        rep_fields={},
+        occasion=_occasion(
+            captured_at=datetime(2026, 8, 7, 1, 0, tzinfo=timezone(timedelta(hours=2)))
+        ),
+        org=None,
+    )
+    assert rendered == "08/06/6/01JZZZZZZZZZZZZZZZZZZZZZZZ"
+
+
+def test_date_label_below_year_1000_is_co_cores():
+    """The one byte split between the renderers, and co-core wins it (#523's relay, #529).
+
+    Archiver rendered ``date_label`` with ``isoformat()`` (``0999-01-02``).
+    co-core uses ``%Y-%m-%d``, which glibc leaves unpadded (``999-01-02``).
+    One renderer is the point of #529, so Archiver takes co-core's value
+    instead of keeping a second implementation for a year no capture can
+    carry. Production's only template doesn't name ``date_label``, and every
+    capture is from 2026, so no destination moves.
+
+    The pin is "whatever co-core renders", not a literal: ``%Y`` below 1000 is
+    a property of the libc. ``year`` and the segments already used ``strftime``
+    and were never split.
+    """
+    captured_at = datetime(999, 1, 2, 3, 4, 5, tzinfo=UTC)
+    values = _occasion(captured_at=captured_at).values()
+    co_core = SourceRevisionVars(dt=captured_at)
+    assert values["date_label"] == co_core.date_label
+    assert values["year"] == co_core.year
+
+
+@pytest.mark.parametrize(
+    ("override", "key"),
+    [
+        ({"source_revision_id": ""}, "source_revision.id"),
+        ({"content_fingerprint": ""}, "source_revision.fingerprint"),
+        ({"content_fingerprint": "sha256:"}, "source_revision.fingerprint"),
+    ],
+)
+def test_an_absent_occasion_value_is_an_occasion_error(override, key):
+    """co-core leaves out an absent value; Archiver refuses it as the caller's bug (#529).
+
+    ``rendered()`` drops ``id`` for an empty ULID and ``fingerprint`` for an
+    empty digest, so a renderer that only looked keys up would report a
+    missing *template* key. The fault is the occasion's, as it was when the
+    segment check refused ``""``, and the template need not name the key.
+    """
+    with pytest.raises(InvalidOccasionError) as exc:
+        render_destination(
+            "x/{source_revision.date_label}",
+            rep_fields={},
+            occasion=_occasion(**override),
+            org=None,
+        )
+    assert exc.value.key == key
+
+
+def test_the_example_occasion_supplies_every_key():
+    """Previews render whatever key a RepSpec names (#308, #333), the new three included."""
+    assert set(example_occasion().values()) == SourceRevisionVars.RENDER_KEYS

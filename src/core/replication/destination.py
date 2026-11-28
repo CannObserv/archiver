@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import unquote
 
-from co_core.pure.util.files import extension_for_media_type
+from co_core.pure.storage import SourceRevisionVars
 
 from src.core.rep_fields import OrgValues, effective_rep_fields, empty_slug_reason
 from src.core.replication.errors import ReplicationRenderError
@@ -61,41 +61,6 @@ _SEGMENT_SAFE = re.compile(r"\A[A-Za-z0-9._-]+\Z")
 _REFUSED_SEGMENTS = frozenset({"", ".", ".."})
 
 _DRIVE_QUALIFIER = re.compile(r"\A[A-Za-z]:")
-
-# ``source_revision.ext`` (archiver#205): the extension the origin's media type
-# implies, so one RepSpec serves HTML pages and PDFs alike and the citable URL
-# reads as what it is.
-#
-# The table itself is co-core's (archiver#210). It used to be spelled out here,
-# with ``mimetypes`` consulted for anything it did not name — and that fallback
-# is precisely what split the key. The storage framework renders this same
-# placeholder through ``extension_for_media_type``, and co-core cannot call
-# ``mimetypes`` (import-linter forbids it there), so every type ``mimetypes``
-# knew and the table did not rendered one extension here and ``bin`` there.
-# ``image/webp`` was worse than split: it resolved only on a host whose mime
-# files happened to list it, making a permanent, citable key a property of the
-# VM that wrote it. One table cluster-wide is the same posture #206 took for the
-# slugger — a new extension is now one entry in co-core, not one per repo.
-
-
-def extension_for(media_type: str | None) -> str:
-    """The path extension for a media type — co-core's table, verbatim.
-
-    Delegates rather than wraps: ``extension_for_media_type`` already strips
-    parameters, lower-cases the essence, and answers ``bin`` for ``None``, the
-    empty string, ``application/octet-stream`` and anything unrecognised. A
-    local re-check of those cases would be a second implementation of the
-    agreement this indirection exists to guarantee.
-
-    Every value co-core's table holds is lower-case alphanumeric, which
-    ``tests.core.replication.test_destination`` pins by iterating that table
-    rather than by sampling media types: the local ``_EXTENSION_SAFE`` check
-    went with the table, so this is now a property of another repository's data.
-    Nothing here depends on it for safety either — ``RenderOccasion.values``
-    re-checks every occasion value against ``_SEGMENT_SAFE``, so an unusable
-    answer raises ``InvalidOccasionError`` instead of reaching a destination.
-    """
-    return extension_for_media_type(media_type)
 
 
 class DestinationRenderError(ReplicationRenderError):
@@ -199,32 +164,34 @@ class RenderOccasion:
     def values(self) -> dict[str, str]:
         """The ``source_revision.*`` vocabulary, rendered path-safe.
 
-        ``fingerprint`` drops the ``sha256:`` prefix — the algorithm is fixed by
-        ``src.core.fingerprints`` and a colon is not a character worth carrying
-        into three providers' name rules. ``captured_at`` uses the *basic* ISO
-        form for the same reason the prefix is dropped; the extended form the
-        repo writes elsewhere carries colons.
+        The values are co-core's ``SourceRevisionVars.rendered()`` (archiver#529,
+        cannobserv#703), the one home of this vocabulary, so a template
+        renders here the key co-core's ``StorageProvider`` renders for the same
+        revision. In brief: ``fingerprint`` drops the ``sha256:`` prefix;
+        ``captured_at`` is the basic ISO form (``%Y%m%dT%H%M%SZ``), with no
+        colons; ``year``, ``month``, ``day``, ``day_unpadded``,
+        ``date_segment``, ``date_label`` and ``datetime_time_segment`` are the
+        ``_DateProps`` spellings, all in UTC; ``ext`` is co-core's media-type
+        table (archiver#210), ``bin`` when the type is unknown or absent.
 
-        ``year``, ``date_segment`` and ``datetime_time_segment`` (archiver#205)
-        are the storage framework's ``_DateProps`` spellings — ``%Y``,
-        ``%Y_%m_%d``, ``%Y_%m_%d-%H_%M_%S`` — rendered in UTC like everything
-        else here, and ``ext`` is :func:`extension_for` over the origin's media
-        type. Together they let the framework's ``infoitem_revision`` location
-        be copied into a RepSpec verbatim and render the same key it would.
+        ``date_label`` below year 1000 is co-core's ``%Y-%m-%d``, which glibc
+        leaves unpadded; the ``isoformat()`` this used to call padded it. One
+        renderer is the point, and no capture carries such a year.
 
-        ``date_label`` is that vocabulary's ``%Y-%m-%d``, renamed from ``date``
-        by archiver#523. It keeps the ``isoformat()`` it rendered under the old
-        name, so a rewritten frozen RepSpec writes to the same key: the two agree
-        for every four-digit year, and ``isoformat()`` is the one of the two
-        that zero-pads below 1000 on every platform.
+        Three refusals stay Archiver's, because the remedy is the caller's (see
+        ``InvalidOccasionError``):
 
-        Every value is checked against the same segment charset the bag half
-        pays (CR #2): the occasion is caller-supplied too, and a guard covering
-        half its inputs is half a guard.
+        - a naive ``captured_at``, checked before co-core sees it;
+        - a key ``rendered()`` leaves out because its input was empty (an empty
+          ULID, an empty digest). Looking it up later would report a missing
+          *template* key for what is a bad occasion;
+        - a value outside the segment charset (CR #2). ``id`` and
+          ``fingerprint`` are the stored values verbatim, and a guard covering
+          half the inputs is half a guard.
 
         Raises:
-            InvalidOccasionError: ``captured_at`` is naive, or a value cannot be
-                a path segment.
+            InvalidOccasionError: ``captured_at`` is naive, a value is absent,
+                or a value cannot be a path segment.
         """
         if self.captured_at.tzinfo is None:
             # astimezone() would read a naive value as VM-local and then stamp
@@ -234,24 +201,29 @@ class RenderOccasion:
             # that built the occasion from something else.
             raise InvalidOccasionError("captured_at", self.captured_at, "naive datetime")
 
-        captured = self.captured_at.astimezone(UTC)
-        _, _, digest = self.content_fingerprint.rpartition(":")
-        values = {
-            "id": self.source_revision_id,
-            "date_label": captured.date().isoformat(),
-            "fingerprint": digest,
-            "captured_at": captured.strftime("%Y%m%dT%H%M%SZ"),
-            "year": captured.strftime("%Y"),
-            "date_segment": captured.strftime("%Y_%m_%d"),
-            "datetime_time_segment": captured.strftime("%Y_%m_%d-%H_%M_%S"),
-            "ext": extension_for(self.source_media_type),
-        }
+        values = SourceRevisionVars(
+            revision_id=self.source_revision_id,
+            content_fingerprint=self.content_fingerprint,
+            media_type=self.source_media_type or "",
+            dt=self.captured_at,
+        ).rendered()
+        absent = sorted(SourceRevisionVars.RENDER_KEYS - values.keys())
+        if absent:
+            raise InvalidOccasionError(absent[0], self._input_for(absent[0]), "absent")
         for key, value in values.items():
             if not _SEGMENT_SAFE.match(value) or value in _REFUSED_SEGMENTS:
                 raise InvalidOccasionError(
                     key, value, "not usable as a path segment (allowed: A-Za-z0-9._-)"
                 )
         return values
+
+    def _input_for(self, key: str) -> object:
+        """The field an absent rendered ``key`` came from, for the refusal's message."""
+        if key == "id":
+            return self.source_revision_id
+        if key == "fingerprint":
+            return self.content_fingerprint
+        return self.captured_at
 
 
 def example_occasion() -> RenderOccasion:
