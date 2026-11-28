@@ -190,19 +190,29 @@ document; the dashboard's Registry badge reports the count
     the document can freeze.
   - `source_revision.*` is the **occasion** namespace: supplied per replication by
     `src.core.replication.destination.RenderOccasion`, and therefore **rejected** in
-    `required_fields` — no `rep_fields` bag can hold it. Eight keys: `id` (the revision ULID),
-    `fingerprint` (sha256 hex, prefix dropped), `date_label` (`YYYY-MM-DD`), `captured_at`
-    (`YYYYMMDDTHHMMSSZ`), and — added in archiver#205 so a template copied from the storage
-    framework's `defaults.toml` renders byte-identically — `year` (`%Y`), `date_segment`
-    (`%Y_%m_%d`), `datetime_time_segment` (`%Y_%m_%d-%H_%M_%S`), all in UTC, and `ext`, derived
-    from `source_revisions.source_media_type` with parameters stripped (`html`, `pdf`, …; `bin`
-    when unknown or `application/octet-stream`). The canonical layout is the framework's
-    `infoitem_revision` location (cannobserv#406, epic #207):
-    `organizations/{org.title_slug}/infoitems/{info_item.name_slug}/{source_revision.year}/{source_revision.datetime_time_segment}-{info_item.name_slug}-{source_revision.id}.{source_revision.ext}`.
+    `required_fields` — no `rep_fields` bag can hold it. The vocabulary is co-core's
+    `SourceRevisionVars.RENDER_KEYS`, rendered by its `rendered()` (archiver#529,
+    cannobserv#703), so a template renders here the key co-core's `StorageProvider` renders.
+    Eleven keys: `id` (the revision ULID), `fingerprint` (sha256 hex, prefix dropped),
+    `captured_at` (`YYYYMMDDTHHMMSSZ`), `date_label` (`%Y-%m-%d`), `year` (`%Y`), `month`
+    (`%m`), `day` (`%d`), `day_unpadded`, `date_segment` (`%Y_%m_%d`) and
+    `datetime_time_segment` (`%Y_%m_%d-%H_%M_%S`), all in UTC, and `ext`, from
+    `source_revisions.source_media_type` through co-core's table (`html`, `pdf`, …; `bin` when
+    unknown or absent). `month`, `day` and `day_unpadded` arrived with #529. `month_name` is
+    absent on purpose, because it follows the host locale. The set is pinned in
+    `tests/core/replication/test_template.py`, so a co-core bump that changes it fails there:
+    a key named in an assigned RepSpec is frozen with it. Archiver keeps its own refusals of a
+    naive `captured_at`, an absent value and an unsafe segment. The canonical layout is
+    co-core's `infoitem_revision` location (cannobserv#406, epic #207):
+    `StorageConfig.defaults().providers["gcs"].locations[StorageLocationKey.INFOITEM_REVISION]`,
+    `path_template` + `/` + `filename_template`. Its shape is frozen in co-core; a new layout
+    would be a new key. Production's one RepSpec holds that string byte for byte, as data.
     `date_label` was `date` until archiver#523, which gave it the shared storage vocabulary's
     name for the same string, with no alias. Migration `e4897ee850d9` rewrote every stored
     `path_template`: a recorded #83 exception, since the bytes are the same and no destination
-    moved. `{source_revision.date}` is now refused as an unknown key.
+    moved. `{source_revision.date}` is now refused as an unknown key. Below year 1000
+    `date_label` is co-core's (glibc leaves `%Y` unpadded), not the `isoformat()` Archiver used
+    to call (#529); no capture carries such a year.
   - The template must carry `{source_revision.id}` or `{source_revision.fingerprint}` (the
     issuer contract's R2). `date_label` is not a discriminator: two revisions captured the same day
     would render one destination, which returns as `destination_conflict` — a conflict token
