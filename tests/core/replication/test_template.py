@@ -5,10 +5,11 @@ validates is a template that renders — the drift these tests exist to prevent.
 """
 
 import pytest
+from co_core.pure.storage import SourceRevisionVars, StorageConfig, StorageLocationKey
 
+from src.core.replication import template
 from src.core.replication.errors import ReplicationRenderError
 from src.core.replication.template import (
-    OCCASION_KEYS,
     OCCASION_NAMESPACE,
     MalformedTemplateError,
     parse_placeholders,
@@ -77,23 +78,29 @@ def test_malformed_template_error_is_a_replication_render_error():
 # --- the occasion namespace ---
 
 
-def test_occasion_namespace_keys_are_the_declared_eight():
-    """The occasion vocabulary is closed — a renderer supplies exactly these.
+def test_occasion_vocabulary_is_co_cores_render_keys_pinned():
+    """The occasion vocabulary is co-core's ``SourceRevisionVars.RENDER_KEYS`` (archiver#529).
 
-    The four added in archiver#205 (``year``, ``date_segment``,
-    ``datetime_time_segment``, ``ext``) mirror the storage framework's
-    ``_DateProps`` names so a template copied from its ``defaults.toml`` renders
-    identically here. ``date_label`` is that vocabulary's name for the
-    ``YYYY-MM-DD`` string this key used to call ``date`` (archiver#523).
+    Validation reads that constant, so a co-core bump that changed it would
+    change what the API accepts with no Archiver diff. Adding a key widens the
+    wire. Dropping one strands every frozen RepSpec that names it, because
+    ``document`` cannot be edited once assigned (#83). The pin makes either
+    change a red test at bump time. Grow it only on purpose.
+
+    ``month``, ``day`` and ``day_unpadded`` arrived with the adoption.
+    ``month_name`` is deliberately absent: ``%B`` follows the host locale.
     """
     assert OCCASION_NAMESPACE == "source_revision"
-    assert OCCASION_KEYS == frozenset(
+    assert SourceRevisionVars.RENDER_KEYS == frozenset(
         {
             "id",
-            "date_label",
             "fingerprint",
+            "date_label",
             "captured_at",
             "year",
+            "month",
+            "day",
+            "day_unpadded",
             "date_segment",
             "datetime_time_segment",
             "ext",
@@ -101,15 +108,36 @@ def test_occasion_namespace_keys_are_the_declared_eight():
     )
 
 
-CANONICAL_LAYOUT = (
-    "organizations/{org.title_slug}/infoitems/{info_item.name_slug}/{source_revision.year}/"
-    "{source_revision.datetime_time_segment}-{info_item.name_slug}-{source_revision.id}"
-    ".{source_revision.ext}"
-)
+def test_archiver_keeps_no_vocabulary_of_its_own():
+    """``OCCASION_KEYS`` is gone: one list, co-core's, not a copy to drift from (#529)."""
+    assert not hasattr(template, "OCCASION_KEYS")
+
+
+@pytest.mark.parametrize("key", ["month", "day", "day_unpadded"])
+def test_the_keys_co_core_added_validate(key):
+    errors = validate_path_template(
+        f"archive/{{source_revision.{key}}}/{{source_revision.id}}", required_fields=[]
+    )
+    assert errors == []
+
+
+def test_month_name_stays_refused():
+    """co-core leaves ``month_name`` out on purpose (locale-dependent), and so does the gate."""
+    errors = validate_path_template(
+        "archive/{source_revision.month_name}/{source_revision.id}", required_fields=[]
+    )
+    assert [e["path"] for e in errors] == ["/path_template"]
+
+
+# co-core's ``infoitem_revision`` location (cannobserv#406, epic #207), read from
+# its defaults rather than copied here (archiver#529). Its shape is frozen in
+# co-core: a new layout would be a new key, never an edit to this one.
+_LOC = StorageConfig.defaults().providers["gcs"].locations[StorageLocationKey.INFOITEM_REVISION]
+CANONICAL_LAYOUT = f"{_LOC.path_template}/{_LOC.filename_template}"
 
 
 def test_the_canonical_layout_validates():
-    """The storage framework's ``infoitem_revision`` location, verbatim (#207)."""
+    """The storage framework's ``infoitem_revision`` location, as co-core ships it (#207)."""
     errors = validate_path_template(
         CANONICAL_LAYOUT, required_fields=["org.title_slug", "info_item.name_slug"]
     )
@@ -139,6 +167,14 @@ def test_the_retired_date_key_is_refused_naming_the_vocabulary():
     assert message.startswith("source_revision.date is not a value the renderer supplies")
     assert "'date_label'" in message
     assert "'date'" not in message
+
+
+def test_the_refusal_lists_co_cores_vocabulary():
+    """The unknown-key message names every key the renderer supplies: all eleven (#529)."""
+    errors = validate_path_template(
+        "archive/{source_revision.slug}/{source_revision.id}", required_fields=[]
+    )
+    assert str(sorted(SourceRevisionVars.RENDER_KEYS)) in errors[0]["message"]
 
 
 def test_occasion_key_needs_no_required_fields_entry():

@@ -63,8 +63,9 @@
           be listed in <code>required_fields</code> (a <code>_slug</code> key derives from its raw
           field, so list <code>org.title_slug</code> and enter <code>org.title</code> on the item),
           and <code>source_revision.*</code>
-          (<code>id</code>, <code>fingerprint</code>, <code>date_label</code>, <code>captured_at</code>,
-          <code>year</code>, <code>date_segment</code>, <code>datetime_time_segment</code>,
+          (co-core's vocabulary: <code>id</code>, <code>fingerprint</code>, <code>date_label</code>,
+          <code>captured_at</code>, <code>year</code>, <code>month</code>, <code>day</code>,
+          <code>day_unpadded</code>, <code>date_segment</code>, <code>datetime_time_segment</code>,
           <code>ext</code>) is supplied per replication — never listed there. Include
           <code>{source_revision.id}</code> or <code>{source_revision.fingerprint}</code> so two
           revisions cannot render one destination. <code>credentials_alias</code> is

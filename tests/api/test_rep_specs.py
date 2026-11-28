@@ -127,6 +127,28 @@ async def test_post_refuses_the_retired_date_key_naming_the_vocabulary(client):
 
 
 @pytest.mark.asyncio
+async def test_post_accepts_the_keys_co_core_added(client):
+    """archiver#529: ``month``, ``day`` and ``day_unpadded`` are accepted on the wire.
+
+    The vocabulary is co-core's ``SourceRevisionVars.RENDER_KEYS`` now, so a
+    document that used to be refused as naming unknown keys creates.
+    """
+    doc = _gcs_doc() | {
+        "path_template": (
+            "archive/{source_revision.year}/{source_revision.month}/{source_revision.day}/"
+            "{source_revision.day_unpadded}-{source_revision.id}.{source_revision.ext}"
+        ),
+        "required_fields": [],
+    }
+    resp = await client.post(
+        "/api/v1/rep-specs",
+        headers=HEADERS,
+        json={"provider": "gcs", "name": "x", "document": doc},
+    )
+    assert resp.status_code == 201, resp.text
+
+
+@pytest.mark.asyncio
 async def test_post_returns_422_on_provider_mismatch(client):
     bad = _gdrive_doc()  # document says gdrive
     resp = await client.post(

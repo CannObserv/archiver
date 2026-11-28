@@ -20,6 +20,17 @@ service-only patch does not require an SDK bump. Each SDK version from 5.19.0 is
 annotated git tag `sdk-v<version>` that off-VM consumers pin (archiver#409,
 `clients/python/README.md` § Releases and tags).
 
+## v4.50.0 (2026-11-28)
+
+[service] **The `source_revision.*` vocabulary is co-core's, and it gains `month`, `day` and `day_unpadded`** (archiver#529, cannobserv#703). No migration. SDK unchanged (5.19.0).
+
+- **Accepted now:** a RepSpec `path_template` may name `{source_revision.month}` (`%m`), `{source_revision.day}` (`%d`) and `{source_revision.day_unpadded}`, all in UTC. That holds on `POST /rep-specs`, `PATCH /rep-specs/{id}`, `POST /tools/validate-rep-spec` and at assignment. They used to be refused as unknown keys. `month_name` stays refused, because it follows the host locale.
+- **The unknown-key refusal lists eleven names.** The message is unchanged up to the list: `source_revision.<key> is not a value the renderer supplies; the source_revision namespace holds [...]`.
+- **No destination moves.** The occasion values are now co-core's `SourceRevisionVars.rendered()`. Every key renders the same bytes as before for every four-digit year. This was checked over every production `source_revisions` row, with production's assigned RepSpec rendered through both renderers: 123 rows, 0 differences [measured 2026-11-28]. The one split is `date_label` below year 1000, where co-core's unpadded `%Y` wins over the `isoformat()` Archiver used to call. No capture carries such a year, and production's template doesn't name `date_label`.
+- **The canonical `infoitem_revision` layout is read from co-core** (`StorageConfig.defaults()`) in the tests, and `docs/SCHEMA.md` points to it. Archiver kept no copy in `src/`. The stored RepSpec is data and isn't rewritten.
+- `[sdk]` Not an SDK release: the OpenAPI snapshot doesn't name the occasion vocabulary. Only its `info.version` moves, and `generated/` regenerates with no diff.
+- Also in this release, with no contract path: the RepSpec create form's hint lists the eleven keys.
+
 ## v4.49.2 (2026-11-27)
 
 [service] **`POST /tools/fetch-and-render` answers 422 `target_unreachable` for an unreachable target, not 500** (archiver#561, closing #445's open question). No migration. SDK unchanged (5.19.0): the regenerated client and the hand-written `fetch_and_render` wrappers move docstrings only.
