@@ -71,12 +71,12 @@ src/core/                      Domain logic
                                destination.py renders, refuses (segment charset,
                                T3 path guards, naive datetimes), pre-flights a
                                fan-out set for colliding paths, and probes
-                               renderability at assignment time. It also supplies
-                               the occasion values themselves — the framework's
-                               date forms, and the extension implied by the
-                               origin's media type via co-core's
-                               extension_for_media_type, the cluster's one table
-                               — and resolves the bag's _slug companions through
+                               renderability at assignment time. The occasion
+                               values are co-core's SourceRevisionVars.rendered()
+                               and template.py validates against its RENDER_KEYS
+                               (archiver#529); Archiver keeps the naive-datetime,
+                               absent-value and segment refusals. The bag's _slug
+                               companions resolve through
                                rep_fields.effective_rep_fields on the way in
                                (archiver#205, #206, #210, #303).
                                permanent_store.py derives a persisted
