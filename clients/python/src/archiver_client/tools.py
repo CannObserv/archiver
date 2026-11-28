@@ -149,7 +149,10 @@ async def fetch_and_render(
 
     ``render=True`` raises ``ArchiverClientError`` (501) until #3 lands.
     Body bytes larger than 5 MiB are truncated server-side; check
-    ``truncated`` and ``body_bytes_total`` to detect.
+    ``truncated`` and ``body_bytes_total`` to detect. A non-2xx answer is
+    returned, with its ``status_code``. A 422 (target unreachability: DNS, a
+    refused connection, a timeout, or a TLS error that outlasts the retries)
+    is surfaced as an ``ArchiverClientError`` subclass.
     """
     body = await _post_json(
         client_facade,

@@ -214,10 +214,19 @@ async def fetch_and_render_route(
     pipe the body into ``propose_selectors`` or ``preview_extraction``). Body
     payloads larger than 5 MiB are truncated; ``truncated`` flags the case.
     ``render=True`` returns 501 until the Playwright fetcher (#3) lands.
+
+    A target that answers, with any status, is a 200: a non-2xx is reported in
+    ``status_code``, not refused. A fetch that fails (DNS, a refused connection,
+    a timeout, a TLS error that outlasts the retries) returns 422 with the
+    standard error envelope, ``kind="domain"`` and ``code`` ``target_unreachable``
+    at ``/url``, as ``preview-extraction`` and ``propose-selectors`` do (#561).
     """
     if body.render:
         raise_envelope(501, "unimplemented", "Playwright fetcher not yet integrated (#3)")
-    result = await fetch_and_render(driver, str(body.url), render=False)
+    try:
+        result = await fetch_and_render(driver, str(body.url), render=False)
+    except TargetUnreachableError as e:
+        _raise_fetch_refusal(e)
     return FetchAndRenderResult(
         url=result.url,
         status_code=result.status_code,
@@ -230,7 +239,10 @@ async def fetch_and_render_route(
 
 
 def _raise_fetch_refusal(e: TargetUnreachableError | TargetHttpError) -> NoReturn:
-    """422 ``kind="domain"`` for a refused fetch, shared by preview and propose (#473).
+    """422 ``kind="domain"`` for a refused fetch, shared by the three fetching tools.
+
+    Preview and propose raise both (#473); fetch-and-render raises only
+    ``TargetUnreachableError`` (#561), since a non-2xx is its answer.
 
     ``target_unreachable``: a transport error. ``target_http_error``: the target
     answered a non-2xx, so nothing was read; ``data`` carries ``status_code`` and
@@ -257,7 +269,7 @@ async def preview_extraction_route(
 ) -> PreviewExtractionResult:
     """Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_source_spec`` + ``fetch_and_render`` + the extractor
+    Composes ``validate_source_spec`` + a 2xx-only fetch + the extractor
     Processor would dispatch for the response's media type (RSS/Atom: one line
     per item) + the canonical-text fingerprint, so an authoring agent can verify
     the spec yields the expected content before persisting.

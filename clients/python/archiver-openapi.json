@@ -3400,7 +3400,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.49.1"
+    "version": "4.49.2"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8719,7 +8719,7 @@
     },
     "/api/v1/tools/fetch-and-render": {
       "post": {
-        "description": "Fetch a target URL and return its body + headers for downstream tools.\n\nUse during SourceSpec authoring to inspect what the extractor will see (e.g.\npipe the body into ``propose_selectors`` or ``preview_extraction``). Body\npayloads larger than 5 MiB are truncated; ``truncated`` flags the case.\n``render=True`` returns 501 until the Playwright fetcher (#3) lands.",
+        "description": "Fetch a target URL and return its body + headers for downstream tools.\n\nUse during SourceSpec authoring to inspect what the extractor will see (e.g.\npipe the body into ``propose_selectors`` or ``preview_extraction``). Body\npayloads larger than 5 MiB are truncated; ``truncated`` flags the case.\n``render=True`` returns 501 until the Playwright fetcher (#3) lands.\n\nA target that answers, with any status, is a 200: a non-2xx is reported in\n``status_code``, not refused. A fetch that fails (DNS, a refused connection,\na timeout, a TLS error that outlasts the retries) returns 422 with the\nstandard error envelope, ``kind=\"domain\"`` and ``code`` ``target_unreachable``\nat ``/url``, as ``preview-extraction`` and ``propose-selectors`` do (#561).",
         "operationId": "fetch_and_render_route_api_v1_tools_fetch_and_render_post",
         "requestBody": {
           "content": {
@@ -9292,7 +9292,7 @@
     },
     "/api/v1/tools/preview-extraction": {
       "post": {
-        "description": "Validate, fetch, extract, and fingerprint with a candidate SourceSpec.\n\nComposes ``validate_source_spec`` + ``fetch_and_render`` + the extractor\nProcessor would dispatch for the response's media type (RSS/Atom: one line\nper item) + the canonical-text fingerprint, so an authoring agent can verify\nthe spec yields the expected content before persisting.\n\nReturns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec\nfails validation or no extractor honours it on this body (``css`` on XML,\n``jsonpath`` on HTML, ``css`` or ``xpath`` on JSON, an invalid ``xpath`` or\n``jsonpath``), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` (the\nfetch failed), ``target_http_error`` (the target answered a non-2xx, e.g. a\n403 bot challenge: nothing is extracted, and ``data`` carries\n``status_code`` and ``challenge``) or ``extraction_failed`` (the body would\nnot parse).",
+        "description": "Validate, fetch, extract, and fingerprint with a candidate SourceSpec.\n\nComposes ``validate_source_spec`` + a 2xx-only fetch + the extractor\nProcessor would dispatch for the response's media type (RSS/Atom: one line\nper item) + the canonical-text fingerprint, so an authoring agent can verify\nthe spec yields the expected content before persisting.\n\nReturns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec\nfails validation or no extractor honours it on this body (``css`` on XML,\n``jsonpath`` on HTML, ``css`` or ``xpath`` on JSON, an invalid ``xpath`` or\n``jsonpath``), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` (the\nfetch failed), ``target_http_error`` (the target answered a non-2xx, e.g. a\n403 bot challenge: nothing is extracted, and ``data`` carries\n``status_code`` and ``challenge``) or ``extraction_failed`` (the body would\nnot parse).",
         "operationId": "preview_extraction_route_api_v1_tools_preview_extraction_post",
         "requestBody": {
           "content": {

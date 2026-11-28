@@ -8,8 +8,10 @@ challenge then reads as "the selector matched nothing" (#473). So
 :func:`fetch_2xx`, which refuses both a transport failure and a non-2xx before
 anything reads the body.
 
-``fetch_and_render`` stays outside it: it is the raw inspection tool and hands
-``status_code`` to its caller.
+``fetch_and_render`` stays outside the 2xx gate: it is the raw inspection tool and
+hands ``status_code`` to its caller. It shares the transport leg,
+:func:`fetch_target`, so all three tools call an unreachable target
+``target_unreachable`` (#561).
 
 The challenge hint is advisory text. Archiver never solves or works around a bot
 challenge: the way forward is an allowlist arranged with the site's owner, or
@@ -62,6 +64,21 @@ def _is_challenge(headers: Mapping[str, str]) -> bool:
     )
 
 
+async def fetch_target(driver: AsyncFetchDriver, url: str) -> FetchResult:
+    """Fetch ``url`` and return the result, whatever its status.
+
+    Raises:
+        TargetUnreachableError: on a transport error (``httpx.HTTPError``): DNS,
+            a refused connection, a timeout, or a TLS error that outlasts the
+            driver's retries.
+    """
+    try:
+        return await driver.execute(FetchContent(url))
+    except httpx.HTTPError as e:
+        # A timeout's text is often empty (httpx.ReadTimeout('')): name its class then.
+        raise TargetUnreachableError(str(e) or type(e).__name__) from e
+
+
 async def fetch_2xx(driver: AsyncFetchDriver, url: str) -> FetchResult:
     """Fetch ``url`` and return the result only if it carries a 2xx body.
 
@@ -73,11 +90,7 @@ async def fetch_2xx(driver: AsyncFetchDriver, url: str) -> FetchResult:
         TargetUnreachableError: on a transport error (``httpx.HTTPError``).
         TargetHttpError: on any non-2xx status.
     """
-    try:
-        result = await driver.execute(FetchContent(url))
-    except httpx.HTTPError as e:
-        # A timeout's text is often empty (httpx.ReadTimeout('')): name its class then.
-        raise TargetUnreachableError(str(e) or type(e).__name__) from e
+    result = await fetch_target(driver, url)
     if not result.is_2xx:
         raise TargetHttpError(result.status_code, challenge=_is_challenge(result.headers))
     return result

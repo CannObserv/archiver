@@ -4,7 +4,12 @@ import httpx
 import pytest
 from co_core.effects.fetch import FetchResult
 
-from src.core.tools.target_fetch import TargetHttpError, TargetUnreachableError, fetch_2xx
+from src.core.tools.target_fetch import (
+    TargetHttpError,
+    TargetUnreachableError,
+    fetch_2xx,
+    fetch_target,
+)
 
 
 def _driver(status_code: int = 200, headers: dict[str, str] | None = None, exc=None):
@@ -84,3 +89,29 @@ async def test_a_transport_error_with_no_text_still_says_what_failed():
     with pytest.raises(TargetUnreachableError) as exc_info:
         await fetch_2xx(_driver(exc=httpx.ReadTimeout("")), "https://example.com")
     assert str(exc_info.value) == "ReadTimeout"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [200, 304, 404, 503])
+async def test_fetch_target_returns_any_status(status_code):
+    """#561: the transport leg alone; fetch-and-render hands the status to its caller."""
+    result = await fetch_target(_driver(status_code), "https://example.com")
+    assert result.status_code == status_code
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("exc", "message"),
+    [
+        (httpx.ConnectError("refused"), "refused"),
+        (httpx.ReadError("bad record mac"), "bad record mac"),
+        (httpx.ReadTimeout(""), "ReadTimeout"),
+    ],
+    ids=["connect", "read", "empty-timeout"],
+)
+async def test_fetch_target_turns_a_transport_error_into_unreachable(exc, message):
+    """#561: every ``httpx.HTTPError``; an empty text names the class, chained."""
+    with pytest.raises(TargetUnreachableError) as exc_info:
+        await fetch_target(_driver(exc=exc), "https://example.com")
+    assert str(exc_info.value) == message
+    assert exc_info.value.__cause__ is exc

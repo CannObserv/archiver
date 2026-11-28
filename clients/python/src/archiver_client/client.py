@@ -882,7 +882,9 @@ class ArchiverClient:
         """Fetch a URL and return its body + headers.
 
         ``render=True`` raises (501) until the Playwright fetcher lands.
-        Body bytes are truncated at 5 MiB; ``truncated`` flags the case.
+        Body bytes are truncated at 5 MiB; ``truncated`` flags the case. A
+        non-2xx is returned with its ``status_code``; an unreachable target
+        raises (422).
         """
         return await _tools.fetch_and_render(self, url, render=render)
 
